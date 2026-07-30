@@ -1,0 +1,4197 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Hill Climb Bike – wie hoch schaffst du es?</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;overflow:hidden;background:#0b1020;
+    font-family:system-ui,"Segoe UI",Roboto,sans-serif;color:#fff;
+    -webkit-user-select:none;user-select:none;touch-action:none;overscroll-behavior:none}
+  #c{position:fixed;inset:0;width:100%;height:100%;display:block}
+
+  /* ---------- HUD ---------- */
+  #hud{position:fixed;top:0;left:0;right:0;padding:10px 12px;pointer-events:none;
+    display:flex;gap:10px;align-items:flex-start;justify-content:space-between;
+    text-shadow:0 2px 6px rgba(0,0,0,.6)}
+  .card{background:rgba(8,14,30,.45);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.12);
+    border-radius:12px;padding:8px 12px;min-width:0}
+  .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;opacity:.65;line-height:1.4}
+  .val{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+  .val small{font-size:12px;font-weight:600;opacity:.7}
+  #left{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+  #right{text-align:right;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+  #fuelWrap{width:132px}
+  #fuelBar{height:9px;border-radius:5px;background:rgba(255,255,255,.16);overflow:hidden;margin-top:6px}
+  #fuelFill{height:100%;width:100%;border-radius:5px;background:linear-gradient(90deg,#ffd166,#f4a261);
+    transition:width .12s linear}
+  #fuelFill.low{background:linear-gradient(90deg,#ff8a5b,#e63946);animation:pulse .7s infinite}
+  @keyframes pulse{50%{opacity:.45}}
+  /* ---------- Boost ---------- */
+  #boostBox{position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(14px + env(safe-area-inset-bottom));z-index:3;
+    /* füllt die Lücke zwischen den Knöpfen: Bremse endet bei 0.25W+48,
+       Gas beginnt bei 0.75W-48 -> 50vw-96 Lücke, minus 20 px Luft pro Seite */
+    width:clamp(160px, calc(50vw - 136px), 640px);
+    padding:9px 14px 11px;border-radius:14px;cursor:pointer;
+    background:rgba(8,14,30,.5);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.12);
+    text-shadow:0 2px 6px rgba(0,0,0,.6);transition:transform .08s,border-color .15s}
+  #boostBox.hidden{display:none}
+  #boostBox.on{transform:translateX(-50%) scale(.97);border-color:rgba(120,220,255,.75)}
+  #boostBox.full{border-color:rgba(120,220,255,.45)}
+  #boostBar{height:15px;border-radius:8px;background:rgba(255,255,255,.16);overflow:hidden;margin-top:7px}
+  #boostFill{height:100%;width:100%;border-radius:8px;
+    background:linear-gradient(90deg,#5ad1ff,#8b7dff);transition:width .08s linear}
+  #boostBox.full #boostFill{box-shadow:0 0 12px rgba(120,220,255,.9)}
+  #boostBox.on #boostFill{background:linear-gradient(90deg,#ffffff,#7ee8ff)}
+  #boostKey{float:right;opacity:.75;letter-spacing:.06em}
+
+  #toast{position:fixed;left:50%;top:22%;transform:translate(-50%,10px);pointer-events:none;
+    font-size:26px;font-weight:800;letter-spacing:.02em;color:#ffe08a;opacity:0;
+    text-shadow:0 3px 12px rgba(0,0,0,.7);transition:opacity .2s,transform .2s}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+
+  /* ---------- Steuerung ---------- */
+  #pads{position:fixed;left:0;right:0;bottom:0;height:58%;display:flex}
+  #pads.hidden{pointer-events:none;opacity:0}
+  .pad{flex:1;display:flex;align-items:flex-end;justify-content:center;padding-bottom:calc(18px + env(safe-area-inset-bottom))}
+  /* Der Bremsknopf sitzt bei 25 % der Breite (rechter Rand 0.25*W + 48), die
+     mittige Boost-Leiste beginnt bei W/2 - 92. Unter 560 px Breite laufen sie
+     ineinander, deshalb rutschen die Knöpfe dort nach oben. */
+  @media (max-width:600px){
+    .pad{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
+    #boostBox{width:calc(100vw - 28px)}   /* Knöpfe sind hier oben drüber */
+  }
+  .knob{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;
+    border:2px solid rgba(255,255,255,.35);background:rgba(10,18,36,.35);backdrop-filter:blur(4px);
+    font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+    transition:transform .07s,background .07s;text-align:center;line-height:1.3}
+  .pad.on .knob{transform:scale(.9);background:rgba(255,255,255,.32)}
+  #padR .knob{border-color:rgba(140,255,180,.6)}
+  #padL .knob{border-color:rgba(255,160,160,.6)}
+  .knob span{display:block;font-size:22px;line-height:1}
+
+  /* ---------- Overlay ---------- */
+  #overlay{position:fixed;inset:0;display:grid;place-items:center;padding:20px;overflow-y:auto;
+    background:radial-gradient(120% 90% at 50% 30%,rgba(10,16,34,.55),rgba(6,10,22,.92))}
+  #overlay.hidden{display:none}
+  #panel{max-width:460px;width:100%;text-align:center;background:rgba(12,20,40,.72);
+    border:1px solid rgba(255,255,255,.14);border-radius:20px;padding:26px 24px 22px;
+    box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  #panel h1{font-size:30px;line-height:1.15;letter-spacing:-.01em;margin-bottom:6px}
+  #panel h1 em{font-style:normal;color:#7ee0a1}
+  /* Der Lauf endete am Gipfel statt im Dreck – das darf man sehen */
+  #panel.geschafft{border-color:rgba(255,214,130,.5);
+    box-shadow:0 24px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,214,130,.18),
+               0 0 46px rgba(255,196,90,.22)}
+  #panel.geschafft h1{color:#ffd98a}
+  #sub{opacity:.75;font-size:14px;line-height:1.5;margin-bottom:16px}
+  #stats{display:none;gap:10px;margin:14px 0 16px}
+  #stats.show{display:flex}
+  #stats .card{flex:1;text-align:center}
+  #keys{font-size:12px;opacity:.6;margin-top:14px;line-height:1.7}
+  kbd{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);border-radius:5px;
+    padding:1px 6px;font-family:inherit;font-size:11px}
+  #btn{margin-top:4px;width:100%;padding:15px;border:0;border-radius:14px;cursor:pointer;
+    font:inherit;font-size:17px;font-weight:800;letter-spacing:.02em;color:#06210f;
+    background:linear-gradient(180deg,#8ef0b0,#4cc47c);box-shadow:0 8px 24px rgba(76,196,124,.35)}
+  #btn:active{transform:translateY(1px)}
+  .tips{text-align:left;font-size:13px;line-height:1.7;opacity:.8;background:rgba(0,0,0,.2);
+    border-radius:12px;padding:12px 14px;margin-bottom:4px}
+  .tips b{color:#ffd166}
+
+  /* niedrige Fenster: alles etwas kompakter, damit der Knopf sichtbar bleibt */
+  @media (max-height:720px){
+    #panel{padding:16px 18px 16px}
+    #panel h1{font-size:23px}
+    #sub{font-size:12.5px;margin-bottom:11px}
+    .char{width:52px}
+    .char .pic{width:44px;height:44px}
+    .char .nm{font-size:10px}
+    #buff{margin-bottom:11px;padding:8px 11px 9px}
+    .pips{margin:6px 0}
+    .tips{font-size:11.5px;line-height:1.55;padding:9px 11px}
+    #btn{padding:12px;font-size:15px}
+    #stats .val{font-size:18px}
+  }
+
+  /* ---------- Fahrerauswahl ---------- */
+  #charLbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;opacity:.6;margin-bottom:9px}
+  #chars{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:10px}
+  #buff{font-size:12.5px;line-height:1.5;margin-bottom:15px;padding:10px 13px 11px;border-radius:12px;
+    background:rgba(126,224,161,.09);border:1px solid rgba(126,224,161,.22);text-align:left}
+  .bTop{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .bTop b{color:#7ee0a1;font-size:13.5px}
+  .bLv{font-size:11px;opacity:.7;white-space:nowrap}
+  .pips{display:flex;gap:4px;margin:7px 0 7px}
+  .pip{flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,.15)}
+  .pip.on{background:linear-gradient(90deg,#7ee0a1,#5ad1ff)}
+  .bDesc{font-size:12px;opacity:.85;margin-bottom:9px}
+  #upBtn{width:100%;padding:9px;border:0;border-radius:9px;font:inherit;font-size:13px;
+    font-weight:700;cursor:pointer;color:#06210f;background:linear-gradient(180deg,#8ef0b0,#4cc47c)}
+  #upBtn:disabled{background:rgba(255,255,255,.12);color:rgba(255,255,255,.45);cursor:default}
+  .bUlt{font-size:11.5px;line-height:1.45;margin-top:10px;padding-top:9px;
+    border-top:1px solid rgba(255,255,255,.12);opacity:.45}
+  .bUlt.on{opacity:1}
+  .bUlt b{color:#ffd166}
+  #coinBox{float:right;letter-spacing:0;text-transform:none;font-size:12px;opacity:1;font-weight:700}
+  .char{width:58px;cursor:pointer;opacity:.5;transition:opacity .15s,transform .15s;position:relative}
+  .char:hover{opacity:.8}
+  .char.sel{opacity:1;transform:translateY(-2px)}
+  .char.view{opacity:.95}
+  .char.view .pic{border-color:rgba(255,255,255,.75);border-style:dashed}
+  .char .lock{display:none}
+  .char.locked .pic{filter:grayscale(1) brightness(.5)}
+  .char.locked .lock{display:block;position:absolute;top:14px;left:0;right:0;
+    text-align:center;font-size:19px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.8))}
+  #buff.locked{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.18)}
+  #buff.locked .bTop b{color:#c9d3e4}
+  #buff.locked #upBtn{background:linear-gradient(180deg,#ffd98a,#f0b44c);color:#3a2604}
+  #buff.locked #upBtn:disabled{background:rgba(255,255,255,.12);color:rgba(255,255,255,.45)}
+  .char .pic{width:50px;height:50px;border-radius:50%;margin:0 auto 5px;overflow:hidden;
+    background:#1a2440 no-repeat;border:2px solid rgba(255,255,255,.22);
+    box-shadow:0 4px 12px rgba(0,0,0,.35);display:grid;place-items:center;
+    font-size:20px;font-weight:800;color:#8fa3c8}
+  .char.sel .pic{border-color:#7ee0a1;box-shadow:0 0 0 3px rgba(126,224,161,.22),0 6px 16px rgba(0,0,0,.45)}
+  .char .nm{font-size:11px;font-weight:600;line-height:1.2;word-break:break-word}
+
+  /* ---------- Testmodus (Taste +) ---------- */
+  #dbg{position:fixed;top:12px;left:50%;transform:translateX(-50%);width:min(320px,calc(100vw - 24px));
+    z-index:6;background:rgba(8,14,30,.86);backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:10px 12px 12px;
+    font-size:12px;line-height:1.45;max-height:calc(100vh - 24px);overflow:auto;
+    box-shadow:0 18px 44px rgba(0,0,0,.5)}
+  #dbg.hidden{display:none}
+  #dbg h3{font-size:10px;letter-spacing:.14em;text-transform:uppercase;opacity:.55;
+    margin:10px 0 6px;font-weight:700}
+  #dbg h3:first-child{margin-top:0}
+  .dGrid{display:flex;flex-wrap:wrap;gap:5px}
+  .dBtn{flex:1 1 88px;padding:6px 8px;border:1px solid rgba(255,255,255,.18);border-radius:8px;
+    background:rgba(255,255,255,.06);cursor:pointer;font:inherit;font-size:11.5px;color:#fff;
+    text-align:left;white-space:nowrap}
+  .dBtn:hover{background:rgba(255,255,255,.14)}
+  .dBtn.on{background:rgba(126,224,161,.22);border-color:rgba(126,224,161,.6)}
+  .dBtn kbd{float:right;opacity:.5;margin-left:8px}
+  #dState{margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.12);
+    font-family:ui-monospace,Consolas,monospace;font-size:11px;opacity:.85;white-space:pre-line}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div id="left">
+    <div class="card">
+      <div class="lbl">Höhe</div>
+      <div class="val" id="hHeight">0<small> m</small></div>
+      <div class="lbl" id="hLives" style="display:none;color:#7ee0a1;opacity:.9">🛡 Schutzengel</div>
+    </div>
+    <div class="card" id="weaCard" style="display:none">
+      <div class="lbl">Wetter</div>
+      <div id="weaName" style="font-size:15px;font-weight:700;line-height:1.3">–</div>
+    </div>
+  </div>
+  <div id="right">
+    <div class="card">
+      <div class="lbl">Punkte</div>
+      <div class="val" id="hScore">0</div>
+      <div class="lbl" style="margin-top:4px">Rekord <span id="hBest">0</span></div>
+    </div>
+    <div class="card" id="fuelWrap">
+      <div class="lbl">Sprit · <span id="hSpeed">0</span> km/h</div>
+      <div id="fuelBar"><div id="fuelFill"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="boostBox" class="hidden">
+  <div class="lbl">Boost <span id="boostKey">Leertaste</span></div>
+  <div id="boostBar"><div id="boostFill"></div></div>
+</div>
+
+<div id="toast"></div>
+
+<div id="pads" class="hidden">
+  <div class="pad" id="padL"><div class="knob"><span>◀</span>Bremse</div></div>
+  <div class="pad" id="padR"><div class="knob"><span>▶</span>Gas</div></div>
+</div>
+
+<div id="overlay">
+  <div id="panel">
+    <h1 id="title">Hill Climb <em>Bike</em></h1>
+    <div id="sub">Fahr so hoch du kannst – je höher, desto mehr ist jeder Meter wert.</div>
+    <div id="stats">
+      <div class="card"><div class="lbl">Höhe</div><div class="val" id="sHeight">0<small> m</small></div></div>
+      <div class="card"><div class="lbl">Punkte</div><div class="val" id="sScore">0</div></div>
+      <div class="card"><div class="lbl">Coins</div><div class="val" id="sCoins">0</div></div>
+      <div class="card"><div class="lbl">Rekord</div><div class="val" id="sBest">0</div></div>
+    </div>
+    <div id="charLbl">Fahrer <span id="coinBox">🪙 <span id="coinCount">0</span></span></div>
+    <div id="chars"></div>
+    <div id="buff"></div>
+    <div class="tips">
+      <b>Rechts</b> Gas · <b>Links</b> Bremse · <b>Leertaste</b> Boost (doppelter Verbrauch)<br>
+      In der Luft hebt Gas die Nase, Bremse drückt sie runter.<br>
+      Steile Hänge brauchen <b>Anlauf</b> · je 100 Punkte gibt es einen 🪙<br>
+      Wetter zieht auf: 🌧️ rutschig · 🌬️ Wind · ⛈️ Blitze · 🌪️ leicht · <b>+</b> Testmodus
+    </div>
+    <button id="btn">Losfahren</button>
+  </div>
+</div>
+
+<div id="dbg" class="hidden"></div>
+
+<script>
+"use strict";
+
+/* =========================================================================
+   CONFIG – hier schrauben, wenn sich das Fahrgefühl anders anfühlen soll
+   ========================================================================= */
+const CFG = {
+  GRAV: 2000,          // px/s²
+  // Antrieb wirkt nur am Hinterrad -> über den Radstand-Constraint kommt effektiv
+  // die Hälfte am Gesamtsystem an. Max. Steigung ohne Schwung: asin(ACC/2/GRAV) ≈ 55°.
+  ACC: 3300,           // Antrieb Hinterrad px/s²
+  BRAKE_ACC: 2100,     // Bremsen / Rückwärts
+  MAXSPD: 1020,        // max. Vorwärtstempo px/s
+  MAXREV: 360,         // max. Rückwärtstempo px/s
+  WHEELBASE: 62,
+  WHEEL_R: 17,
+  // Fahrer als eigene Masse über der Achslinie. Der Schwerpunkt des starren
+  // Dreiecks liegt dann bei BODY_M*SEAT_H/(2+BODY_M) = 18 px über den Achsen,
+  // also ungefähr auf Sitzhöhe – dort dreht sich das Bike in der Luft.
+  // Höher geht nicht: am Steilhang kippt das Bike nach hinten weg, sobald
+  // tan(Hang) > (Radstand/2)/(Schwerpunkthöhe + Radradius). Bei 9,6 px liegt
+  // diese Grenze bei 49,4° und damit sicher über dem Steigungsdeckel von
+  // 44,1°. Auf voller Sitzhöhe (18 px) wären es nur 41,5° – gemessen endeten
+  // damit 17 von 20 Läufen im Rückwärtsüberschlag.
+  SEAT_H: 10,
+  SEAT_FWD: 0,         // Vorversatz des Fahrers, 0 = mittig über den Achsen
+  BODY_M: 3,           // Fahrermasse, jedes Rad zählt 1
+  HEAD_H: 42,          // Kopfhöhe über der Rahmenachse -> Crash-Punkt
+  // Drehmoment in der Luft. Bei 200 brauchte eine volle Drehung 1,48 s – mehr
+  // als jeder Sprung hergab, der Flip-Bonus war damit unerreichbar.
+  // Entscheidend fürs Gefühl ist nicht die Enddrehzahl, sondern wie schnell
+  // die Drehung anspringt: bei 640 waren nach 0,3 s erst 54° herum, bei 900
+  // sind es 75°. Deutlich mehr macht den Flip zum Selbstläufer.
+  // Hoch, weil die Dämpfung unten dagegen arbeitet: zusammen ergibt das eine
+  // Drehung, die schnell anspringt (90° in 0,3 s), aber von allein wieder
+  // ausklingt, statt nach einem Tipper endlos weiterzulaufen.
+  TQ_AIR: 1600,
+  // Sobald beide Räder frei sind, zieht es weniger stark nach unten. Das
+  // verlängert jeden Sprung, ohne das Fahren am Boden anzufassen.
+  AIR_GRAV: 0.9,
+  TQ_GROUND: 95,       // Drehmoment am Boden (Wheelie)
+  MAX_OMEGA: 9,        // rad/s Deckel
+  // Ohne Dämpfung bleibt jede angestoßene Drehung für immer stehen: ein kurzer
+  // Tipper drehte das Bike noch eine halbe Sekunde später um 137° weiter, und
+  // man kippte ständig ungewollt um. Der Wert ist der Anteil, der pro Sekunde
+  // aus der Drehung verschwindet, solange beide Räder frei sind.
+  SPIN_DAMP: 3.5,
+  // So lange muss das Bike am Boden bleiben, bis ein Sprung als beendet gilt.
+  LAND_GRACE: 0.15,
+  // Ab so vielen Umdrehungen zählt der erste Flip. Jeder weitere braucht dann
+  // eine ganze Drehung mehr – 0,75 / 1,75 / 2,75 usw.
+  FLIP_MIN: 0.75,
+  PPM: 26,             // Pixel pro Meter
+  // Harter Steigungsdeckel: kein Hang wird steiler als das hier (tan).
+  // 0.97 = 44,1°. Klettergrenze aus dem Stand: 55,6° auf Fels, 45,2° im
+  // tiefsten Schnee – beide über dem Deckel, also gibt es keinen Hang,
+  // an dem man zwangsläufig hängen bleibt. Im Schnee wird es trotzdem zäh.
+  SLOPE_CAP: 0.97,
+  SLOPE_CAP_DOWN: 1.5, // bergab darf es steiler sein (56°)
+  SNOWLINE: 2600,      // ab hier Schnee -> weniger Grip
+  SNOW_FADE: 1000,
+  GRIP_SNOW: 0.86,
+  // Gebiete über dem Schnee. Alle drei sind rein optisch – am Grip wird nichts
+  // geändert, sonst rutschte die Klettergrenze unter den Steigungsdeckel und es
+  // entstünden Hänge, an denen man zwangsläufig hängen bleibt.
+  ICELINE: 6500,       // 250 m – Gletschereis mit eingefrorenen Tieren
+  LAVALINE: 13000,     // 500 m – Vulkangestein mit glühenden Adern
+  SPACELINE: 19500,    // 750 m – Sternenzone, Luft ist praktisch weg
+  // Das Finale. Der Deckel wird hart gesetzt, damit alles bei jedem Seed auf
+  // genau derselben Höhe liegt und nicht davon abhängt, wo die Strecke gerade
+  // zufällig endet: erst eine ebene Anlaufbahn, dann eine gerade Rampe hoch
+  // zum Gipfel auf 1000 m – und ab dort ist die Schwerkraft weg.
+  GIPFEL: 26000,       // 1000 m, Absprunghöhe
+  FINAL_RISE: 1300,    // 50 m, die die Rampe überwindet
+  FINAL_FLAT: 520,     // 20 m ebener Anlauf vor der Rampe
+  // Die Rampe wird nach oben hin steiler: unten flach genug, um Tempo zu
+  // holen, oben über der Klettergrenze von 45,2° – dort trägt einen nur noch
+  // der Schwung von unten. Genau das macht den Absprung steil.
+  // Gemessen ist 49° an der Kante das Steilste, das auch der schwächste Fahrer
+  // ohne Boost noch schafft; ab 52,4° bleibt er kurz vor dem Gipfel hängen.
+  FINAL_SLOPE0: 0.55,  // 28,8° am Fuß
+  FINAL_SLOPE1: 1.15,  // 49,0° an der Kante
+  FINAL_DROP: 1.3,     // so steil fällt der Berg hinter dem Gipfel ab
+  WELTALL_ZEIT: 7,     // s Schwebeflug nach dem Absprung, dann kommt der Abspann
+  ZONE_FADE: 2200,     // px, über die ein Gebiet ein- und ausblendet
+  BOOST_ACC: 1.85,     // Schubfaktor während des Boosts
+  BOOST_SPD: 1.35,     // erlaubte Höchstgeschwindigkeit dabei
+  BOOST_DRAIN: 42,     // %/s -> volle Leiste reicht ~2,4 s
+  BOOST_CHARGE: 11,    // %/s -> in ~9 s wieder voll
+  BOOST_DELAY: 0.8,    // s Pause, bevor nachgeladen wird
+  BOOST_FUEL: 2,       // Spritverbrauch während des Boosts (Faktor)
+  FUEL_IDLE: 0.85,     // %/s
+  FUEL_GAS: 2.3,       // %/s zusätzlich bei Gas
+  FUEL_CAN: 35,        // % pro Kanister
+  // Abstand so gewählt, dass es knapp wird: gemessen sinkt der Tank vor dem
+  // nächsten Kanister im Tiefpunkt auf gut 10 %, mit Boost geht es sich aus.
+  CAN_SPACING: 3600,
+  // Wie weit ein Rad je Substep höchstens aus dem Boden geschoben wird.
+  // Im normalen Fahren liegt das Eindringen bei wenigen Pixeln, die Grenze
+  // greift also nur in Ausnahmefällen – siehe collide().
+  /* ---- Federung ----
+     Ein echter Schwinger, angetrieben von der gemessenen Geschwindigkeits-
+     änderung der Räder: beim Aufsetzen federt er ein und wippt gedämpft aus,
+     in der Luft zieht er sich ganz aus. Er hängt einseitig an der Physik und
+     wirkt nicht auf sie zurück – das ist Absicht. Beide Wege dorthin habe ich
+     ausprobiert und wieder verworfen:
+       weiche Bodenauflage -> das Rad klebt an den Steilwänden, sie werden
+         ohne Boost von 17 % auf 42 % schaffbar (auch bei 2 px Federweg)
+       weiche Streben zum Fahrer -> die Fahrermasse rutscht unter die Achse
+         durch und hängt dort, womit die Balance auf dem Kopf steht          */
+  SUSP_TRAVEL: 12,     // px Federweg bis zum Anschlag
+  SUSP_HIT: 0.09,      // wie viel Federweg je px/s Auftreffgeschwindigkeit
+  SUSP_MIN: 120,       // px/s, darunter gilt es nicht als Stoß
+  SUSP_K: 260,         // Federhärte -> rund 2,6 Hz Eigenfrequenz
+  SUSP_C: 19,          // Dämpfung, lässt genau ein sichtbares Nachwippen zu
+  SUSP_SAG: 2.5,       // px Ruhelage am Boden, in der Luft null
+
+  MAX_PEN: 30,
+  V_MAX: 36,           // px pro Substep, Obergrenze je Partikel – siehe capV()
+  GEY_PERIODE: [5.5, 8],   // s zwischen zwei Ausbrüchen
+  GEY_WARN: 1.1,           // s Blubbern als Vorwarnung
+  GEY_DAUER: 1.3,          // s Ausbruch
+  GEY_R: 34,               // px halbe Breite der Säule
+  AIR_DAMP: 0.9994,
+  ROLL_FRIC: 0.007,
+  BRAKE_FRIC: 0.14,
+  REST: 0.12,
+
+  /* ---- Wetter ----
+     Der Grip-Verlust im Regen ist bewusst klein: die Klettergrenze aus dem
+     Stand liegt bei asin(ACC*grip/2/GRAV) und muss über dem Steigungsdeckel
+     von 44,1° bleiben, sonst gäbe es Hänge, an denen man zwangsläufig hängt.
+     Mit 12 % bleibt sie bei 45,7° – rutschig anfühlen tut es sich trotzdem,
+     weil die Bremse fast die Hälfte ihrer Wirkung verliert. */
+  WEA_FIRST: [22, 45],       // s bis zur ersten Wetterlage
+  WEA_PAUSE: [30, 62],       // s Pause danach
+  WEA_RAIN_GRIP: 0.12,       // Grip-Verlust im Regen (nur auf Fels, nicht im Schnee)
+  WEA_RAIN_BRAKE: 0.45,      // so viel Bremswirkung geht im Nassen verloren
+  WEA_WIND: 250,             // px/s² Gegenwind in der Luft, Böen skalieren das
+  WEA_WIND_GROUND: 0.6,      // am Boden hält das Rad dagegen
+  WEA_TORNADO_GRAV: 0.55,    // Gravitation direkt am Trichter
+  WEA_TORNADO_R: 1600,       // Wirkradius des Trichters
+  // Sog als Vielfaches von WEA_WIND. 3,2 heißt am Boden bis 480 px/s²: klar
+  // spürbar, aber unter dem Antrieb (1650), man kommt also wieder weg.
+  WEA_TORNADO_PULL: 3.2,
+  // Auftrieb: 1300 gegen 1100 Schwerkraft im Kern, das Bike hebt also knapp ab.
+  // Er läuft mit der Höhe aus, sonst würde man immer weiter steigen. Gemessen
+  // hängt man so ~2 s am Stück in der Luft; mit mehr Auftrieb wird man minuten-
+  // lang festgehalten und stürzt beim Landen deutlich öfter.
+  WEA_TORNADO_LIFT: 1300,    // px/s² direkt über dem Boden
+  WEA_TORNADO_LIFT_H: 100,   // px, über denen kein Auftrieb mehr wirkt
+  WEA_BOLT_EVERY: [3, 5.5],  // s zwischen zwei Blitzen
+  WEA_BOLT_WARN: 1.2,        // s Vorwarnung, bevor es einschlägt
+  WEA_BOLT_LEAD: 0.85,       // wie weit der Blitz vorhält (1 = perfekt gezielt)
+  WEA_BOLT_SPREAD: 280,      // px Streuung um den vorgehaltenen Punkt
+  WEA_BOLT_HIT: 58,          // px Trefferradius
+};
+
+/* =========================================================================
+   CANVAS / KAMERA
+   ========================================================================= */
+const cvs = document.getElementById("c");
+const ctx = cvs.getContext("2d");
+let W = 0, H = 0, DPR = 1, SCALE = 1;
+const CAMX = 0.36, CAMY = 0.64;      // Bildschirmposition des Bikes
+const cam = { x: 0, y: 0 };
+
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  cvs.width = Math.round(W * DPR); cvs.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  SCALE = Math.max(0.5, Math.min(1.15, H / 780));
+}
+addEventListener("resize", resize);
+resize();
+
+const sx = wx => W * CAMX + (wx - cam.x) * SCALE;
+const sy = wy => H * CAMY - (wy - cam.y) * SCALE;   // Welt-Y zeigt nach oben
+const wxAt = px => cam.x + (px - W * CAMX) / SCALE;
+
+/* =========================================================================
+   TERRAIN – deterministisch, endlos, wird mit der Distanz steiler
+   ========================================================================= */
+function hash(n) { const s = Math.sin(n * 127.1) * 43758.5453; return s - Math.floor(s); }
+function vnoise(x) {
+  const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f);
+  return hash(i) * (1 - u) + hash(i + 1) * u;
+}
+const smooth = t => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+
+// Schwierigkeit: 0..1 über die ersten ~11000 px, danach flacher weiter steigend –
+// so wird es immer schwerer, ohne dass die Berge ins Absurde wachsen.
+function diffAt(x) {
+  const t = Math.max(0, x) / 11000;
+  // Deckel bei 3,67 (erreicht bei x = 60000): die Grundsteigung ist dort 0,60
+  // und käme sonst in die Nähe des Steigungsdeckels 0,776 – das Gelände würde
+  // zur einzigen geraden Rampe, weil für Täler kein Spielraum mehr bleibt.
+  // Ab da wird es nicht mehr steiler, aber die Strecke geht weiter: gemessen
+  // bleiben Median 33° und Täler erhalten, es ist also weiter fahrbar.
+  return Math.min(3.67, t <= 1 ? t : 1 + (t - 1) * 0.6);
+}
+
+// Pro Runde neu gewürfelt: gleicher Schwierigkeitsverlauf, andere Berge.
+let SEED = 0;
+
+// Kurze Wellen statt Riesenberge: ein einzelner Tal->Gipfel-Anstieg bleibt bei
+// ~20 m, die Steilheit kommt aus der Frequenz, nicht aus der Höhe.
+function rawTerrain(x) {
+  const s = smooth((x - 140) / 1200);         // flacher Start
+  const d = diffAt(x);
+  let h = x * (0.09 + 0.14 * d);              // Grundsteigung
+  h += Math.sin(x * 0.0036 + SEED * 1.7) * (70 + 110 * d);
+  h += Math.sin(x * 0.0075 + 1.7 + SEED * 3.1) * (35 + 55 * d);
+  h += (vnoise(x * 0.0040 + 3.1 + SEED * 13) - 0.5) * (60 + 110 * d);
+  h += (vnoise(x * 0.011 + 11.7 + SEED * 29) - 0.5) * (18 + 36 * d);
+  return h * s;
+}
+
+// Das rohe Profil wird einmal pro Runde in ein Höhenfeld gegossen. Statt
+// steile Stellen hart abzuschneiden (das ergab lange, schnurgerade Rampen)
+// wird die Steigung weich zusammengedrückt: bis 65 % der Grenze bleibt alles
+// wie gewürfelt, darüber läuft es asymptotisch gegen die Grenze, ohne sie je
+// zu erreichen. Unterschiedlich steile Hänge bleiben dadurch unterschiedlich.
+const TSTEP = 5;
+// Lang genug, dass der Gipfeldeckel von 1000 m auch erreicht wird: ab x=60000
+// steigt das Gelände nur noch rund 4,4 m je 1000 px, weil die Steigungsbremse
+// die großen Ausschläge oben stärker staucht als unten.
+const TFIELD = new Float32Array(35000);
+const TEND = (TFIELD.length - 1) * TSTEP;
+const DETAIL_ROOM = 0.2;                      // Anteil des Steigungsbudgets für die Feinwelle
+
+function softSlope(s, cap) {
+  const k = cap * 0.65;
+  return s <= k ? s : k + (cap - k) * Math.tanh((s - k) / (cap - k));
+}
+
+// Feine Welle obendrauf – bricht auch die steilsten Passagen auf.
+// Steigungsanteil = 9 * 0.021 = 0.189, passt exakt ins reservierte Budget.
+function detail(x) {
+  return Math.sin(x * 0.021 + SEED * 5.3) * 9;
+}
+
+/* ---- Sonderstellen: Steilwände und Schluchten mit Brücke ----------------
+   Die Steigungsbremse oben hält alles fahrbar. Diese beiden Features werden
+   danach obendrauf gesetzt und dürfen die Grenze bewusst reißen:
+   - WALLS: kurze, sehr steile Stufen -> nur mit Boost zu schaffen.
+   - RAVINES: tiefe Kerben; darüber spannt sich eine Brücke.             */
+let WALLS = [], RAVINES = [], RSLOTS = [], JUMPS = [], JSLOTS = [], PSLOTS = [];
+
+function planFeatures() {
+  WALLS = []; RAVINES = []; RSLOTS = []; JUMPS = []; JSLOTS = []; PSLOTS = [];
+  for (let k = 0; ; k++) {
+    const x0 = 6500 + k * 7000 + hash(k * 13.7 + SEED) * 2500;
+    if (x0 > TEND - 2500) break;
+    // target = gewünschte Endsteilheit (tan). 1.80-2.05 sind 61-64°: sicher
+    // über der Grenze ohne Boost (55,6°), aber flach genug, dass das Bike
+    // beim Boosten nicht nach hinten wegkippt. Die Höhe H wird in
+    // buildTerrain aus dem tatsächlichen Gefälle an der Stelle berechnet.
+    const L = 260 + hash(k * 5.1 + SEED) * 140;
+    WALLS.push({ x0, L, H: 0, target: 1.80 + hash(k * 9.9 + SEED) * 0.25 });
+  }
+  // Nur grobe Suchfenster – die genaue Stelle sucht buildTerrain, sobald das
+  // Gelände steht: die Brücke soll da liegen, wo der Berg flach ist.
+  for (let k = 0; ; k++) {
+    const x = 8500 + k * 7000 + hash(k * 3.3 + SEED + 40) * 1500;
+    if (x > TEND - 3000) break;
+    RSLOTS.push({ x, w: 420 + hash(k * 7.7 + SEED) * 260,
+                  D: 420 + hash(k * 11.1 + SEED) * 380 });
+  }
+  // Sprungschanzen: auch hier nur das Suchfenster. Die Rampe braucht Gefälle
+  // dahinter, sonst landet man sofort wieder – die Stelle sucht buildTerrain.
+  for (let k = 0; ; k++) {
+    const x = 3000 + k * 2800 + hash(k * 17.3 + SEED + 70) * 1100;
+    if (x > TEND - 1600) break;
+    JSLOTS.push({ x, L: 210 + hash(k * 4.9 + SEED) * 80,
+                  target: 0.85 + hash(k * 6.3 + SEED) * 0.12 });
+  }
+  // Lavabecken. Sie sind Kerben wie die Schluchten, nur mit Lava gefüllt, und
+  // kommen in zwei Sorten: breit mit Brücke, oder schmal mit Schanze davor.
+  // Welche Stelle es wird, entscheidet buildTerrain – nur dort, wo der Berg
+  // wirklich in der Vulkanzone liegt.
+  for (let k = 0; ; k++) {
+    const x = 9000 + k * 3400 + hash(k * 8.9 + SEED + 90) * 1500;
+    if (x > TEND - 3000) break;
+    const bruecke = hash(k * 2.7 + SEED + 5) > 0.5;
+    PSLOTS.push({ x, bruecke,
+                  w: bruecke ? 420 + hash(k * 6.1 + SEED) * 240
+                             : 120 + hash(k * 6.1 + SEED) * 50,
+                  // flach halten: ein schmales, tiefes Loch sieht aus wie ein
+                  // Schacht, nicht wie ein Becken
+                  D: bruecke ? 420 + hash(k * 3.9 + SEED) * 320
+                             : 115 + hash(k * 3.9 + SEED) * 70 });
+  }
+}
+
+function wallRise(x) {
+  let h = 0;
+  for (const w of WALLS) {
+    if (x <= w.x0) continue;
+    h += x >= w.x0 + w.L ? w.H : w.H * smooth((x - w.x0) / w.L);
+  }
+  return h;
+}
+
+/* Sprungschanze: h = H*t² steigt bis zur Kante immer steiler an, danach fällt
+   der Boden über JDROP Pixel weg. Genau diese Kante macht die Flugzeit – über
+   eine runde Kuppe rollt man, ohne abzuheben. */
+const JDROP = 70;
+
+function jumpRise(x, nurHolz) {
+  let h = 0;
+  for (const j of JUMPS) {
+    if (nurHolz && !j.holz) continue;
+    if (x <= j.x0 || x >= j.x0 + j.L + JDROP) continue;
+    const t = (x - j.x0) / j.L;
+    h += t < 1 ? j.H * t * t : j.H * (1 - smooth((x - j.x0 - j.L) / JDROP));
+  }
+  return h;
+}
+
+// liste: welche Kerben ausgehoben werden – die Becken kommen später dran als
+// die Schluchten, sonst würde beim zweiten Durchgang doppelt gegraben
+function ravineDepth(x, liste) {
+  let d = 0;
+  for (const r of (liste || RAVINES)) {
+    const t = (x - r.x1) / (r.x2 - r.x1);
+    if (t <= 0 || t >= 1) continue;
+    d += r.D * Math.min(1, Math.sin(Math.PI * t) * 2.2);   // steile Flanken, flacher Grund
+  }
+  return d;
+}
+
+// Breite des Randstreifens, in dem der Auflagepunkt des Decks gesucht wird.
+const BOFF = 24;
+
+// Auslauf an einem Deckende: c(d) = k*d*(1-|d|/E)^2 addiert am Ende genau die
+// fehlende Steigung k und ist nach E Pixeln wieder null. Das Deck liegt damit
+// tangential auf dem Hang auf, in der Mitte bleibt es gerade. Die Steigung des
+// Decks bleibt dabei zwischen s0-k/3 und s0+k, wird also nie steiler als der
+// Hang, auf den es trifft.
+function deckEase(d, k, E) {
+  if (k === 0 || Math.abs(d) >= E) return [0, 0];
+  const u = Math.abs(d) / E;
+  return [k * d * (1 - u) * (1 - u), k * (1 - u) * (1 - 3 * u)];
+}
+
+function deckAt(r, x) {
+  const a = deckEase(x - r.bx1, r.k1, r.E), b = deckEase(x - r.bx2, r.k2, r.E);
+  return { y: r.y1 + r.s0 * (x - r.bx1) + a[0] + b[0], s: r.s0 + a[1] + b[1] };
+}
+
+// Brückendeck an dieser Stelle (oder null)
+function bridgeAt(x) {
+  for (const r of RAVINES) {
+    // Becken zum Drüberspringen haben keine Auflager. Ohne diese Abfrage wären
+    // ihre undefinierten Ränder in jedem Vergleich false und die Schleife gäbe
+    // für JEDE Stelle ein NaN-Deck zurück – echte Brücken dahinter fänden dann
+    // nie jemand.
+    if (!r.bruecke) continue;
+    if (x < r.bx1 || x > r.bx2) continue;
+    return deckAt(r, x);
+  }
+  return null;
+}
+
+// Oberfläche unter yRef – die Brücke trägt nur von oben
+function groundUnder(x, yRef) {
+  const t = terrainY(x), b = bridgeAt(x);
+  return (b && yRef >= b.y - 4 && b.y > t) ? b.y : t;
+}
+
+function buildTerrain() {
+  planFeatures();
+  const room = 1 - DETAIL_ROOM;
+  const capUp = CFG.SLOPE_CAP * room * TSTEP;
+  const capDn = CFG.SLOPE_CAP_DOWN * room * TSTEP;
+  let raw = rawTerrain(0), y = raw;
+  TFIELD[0] = y + detail(0);
+  for (let i = 1; i < TFIELD.length; i++) {
+    const x = i * TSTEP;
+    const r = rawTerrain(x);
+    let ds = r - raw;                         // Rohsteigung dieses Schrittes
+    ds = ds >= 0 ? softSlope(ds, capUp) : -softSlope(-ds, capDn);
+    raw = r;
+    y += ds;
+    TFIELD[i] = y + detail(x);
+  }
+
+  // Brückenplatz suchen: im Fenster die Stelle mit den flachsten Kanten. Nur
+  // dort passt eine waagerechte Brücke ohne Absatz an den Berg. Bewertet wird
+  // die Deckneigung (doppelt, die sieht man am stärksten) und das Gefälle
+  // direkt vor und hinter der Schlucht.
+  for (const sl of RSLOTS) {
+    let best = null;
+    for (let x1 = sl.x - 1400; x1 <= sl.x + 1400; x1 += 60) {
+      const x2 = x1 + sl.w;
+      if (x1 < 1500 || x2 > TEND - 600) continue;
+      if (WALLS.some(v => v.x0 < x2 + 900 && v.x0 + v.L > x1 - 900)) continue;
+      const deck = (terrainY(x2) - terrainY(x1)) / sl.w;
+      const sc = Math.max(Math.abs(deck) * 2,
+                          Math.abs(slopeAt(x1 - 25)), Math.abs(slopeAt(x2 + 25)));
+      if (!best || sc < best.sc) best = { x1, x2, sc };
+    }
+    if (best && best.sc < 0.55)
+      RAVINES.push({ x1: best.x1, x2: best.x2, D: sl.D, y1: 0, y2: 0, bruecke: true });
+  }
+  if (RAVINES.length) {
+    for (let i = 0; i < TFIELD.length; i++) TFIELD[i] -= ravineDepth(i * TSTEP);
+  }
+
+  // Steilwände: Höhe so wählen, dass zusammen mit dem vorhandenen Gefälle
+  // die Zielsteilheit herauskommt (Smoothstep-Flanke ist 1,5× der Schnitt).
+  for (const w of WALLS) {
+    const i0 = Math.min(TFIELD.length - 1, Math.round(w.x0 / TSTEP));
+    const i1 = Math.min(TFIELD.length - 1, Math.round((w.x0 + w.L) / TSTEP));
+    const base = i1 > i0 ? (TFIELD[i1] - TFIELD[i0]) / ((i1 - i0) * TSTEP) : 0;
+    w.H = Math.max(60, w.L * (w.target - base) / 1.5);
+  }
+  for (let i = 0; i < TFIELD.length; i++) TFIELD[i] += wallRise(i * TSTEP);
+
+  // Lavabecken erst jetzt suchen: jede Steilwand hebt alles hinter sich
+  // dauerhaft an, vorher stünde die Höhenprüfung um Tausende Pixel daneben und
+  // die Becken lägen in der falschen Zone.
+  const neueBecken = [];
+  for (const sl of PSLOTS) {
+    let best = null;
+    for (let x1 = sl.x - 2400; x1 <= sl.x + 2400; x1 += 40) {
+      const x2 = x1 + sl.w;
+      if (x1 < 2000 || x2 > TEND - 900) continue;
+      const h = terrainY(x1);
+      // Erst ab LAVALINE + ZONE_FADE ist das Gestein wirklich vulkanisch – ein
+      // Lavabecken mitten im Gletscher sähe verkehrt aus.
+      if (h < CFG.LAVALINE + CFG.ZONE_FADE || h > CFG.SPACELINE - 300) continue;
+      if (WALLS.some(v => v.x0 < x2 + 900 && v.x0 + v.L > x1 - 900)) continue;
+      if (RAVINES.some(r => r.x1 < x2 + 1200 && r.x2 > x1 - 1200)) continue;
+      const deck = (terrainY(x2) - terrainY(x1)) / sl.w;
+      let sc = Math.max(Math.abs(deck) * 2,
+                        Math.abs(slopeAt(x1 - 25)), Math.abs(slopeAt(x2 + 25)));
+      if (!sl.bruecke) {
+        // Ohne Brücke muss gesprungen werden, und dafür braucht es Tempo: der
+        // Anlauf davor darf nicht bergauf gehen, sonst kommt das Bike mit 300
+        // statt 800 px/s an der Schanze an und fällt zwangsläufig hinein.
+        const anlauf = (terrainY(x1 - 60) - terrainY(x1 - 560)) / 500;
+        if (anlauf > -0.02) continue;           // muss bergab sein
+        // Landeseite darf nicht höher liegen als die Absprungkante, sonst
+        // fehlt genau der Meter, der über die Lava trägt
+        if (terrainY(x2 + 60) > terrainY(x1)) continue;
+        if ((terrainY(x2 + 320) - terrainY(x2)) / 320 > 0.45) continue;
+        sc = Math.max(sc, anlauf + 0.3);
+      }
+      if (!best || sc < best.sc) best = { x1, x2, sc };
+    }
+    if (best && best.sc < (sl.bruecke ? 0.55 : 0.75)) {
+      const becken = { x1: best.x1, x2: best.x2, D: sl.D, y1: 0, y2: 0,
+                       bruecke: sl.bruecke, lava: true };
+      RAVINES.push(becken); neueBecken.push(becken);
+    }
+  }
+  // nur die Becken ausheben – die Schluchten sind schon gegraben
+  if (neueBecken.length) {
+    for (let i = 0; i < TFIELD.length; i++)
+      TFIELD[i] -= ravineDepth(i * TSTEP, neueBecken);
+  }
+
+  // Sprungschanzen platzieren: gesucht wird die Stelle mit dem meisten Gefälle
+  // hinter der Kante. Erst der tiefere Landeplatz bringt die Flugzeit, aus der
+  // Rampe allein käme nur ein knapper halber Salto heraus.
+  for (const sl of JSLOTS) {
+    let best = null;
+    for (let x0 = sl.x - 1500; x0 <= sl.x + 1500; x0 += 40) {
+      const kante = x0 + sl.L;
+      if (x0 < 2000 || kante + 900 > TEND) continue;
+      if (WALLS.some(w => w.x0 < kante + 500 && w.x0 + w.L > x0 - 500)) continue;
+      if (RAVINES.some(r => r.x1 < kante + 500 && r.x2 > x0 - 500)) continue;
+      if (JUMPS.some(j => Math.abs(j.x0 - x0) < 2200)) continue;
+      // Im Fels darf die Rampe etwas über den Steigungsdeckel: die Grenze aus
+      // dem Stand liegt dort bei 55,6° (nass 46,6°). Im Schnee sind es nur
+      // 45,2°, also bleibt sie oben beim Deckel. So gibt es keine Schanze,
+      // die man ohne Anlauf nicht hochkäme.
+      const schnee = smooth((terrainY(x0) - CFG.SNOWLINE) / CFG.SNOW_FADE);
+      const tgt = sl.target + 0.08 * (1 - schnee);
+      // Die höchste Rampe, die an KEINER Stelle über diese Steigung kommt.
+      // Nur die Kante zu prüfen reicht nicht: auf einer Kuppe liegt die
+      // steilste Stelle mitten in der Rampe, und dort bliebe man hängen.
+      let H = 1e9;
+      for (let t = 0.15; t < 1.02; t += 0.05)
+        H = Math.min(H, (tgt - slopeAt(x0 + t * sl.L)) * sl.L / (2 * t));
+      if (H < 35) continue;
+      H = Math.min(H, 200);
+      // Flugzeit kommt aus drei Dingen: Anlauf davor (Tempo), Rampenhöhe
+      // (Absprungwinkel) und Abfall dahinter (tieferer Landeplatz).
+      const fall = terrainY(kante) - terrainY(kante + 700);
+      if (fall < 110) continue;                     // ohne tieferen Landeplatz keine Flugzeit
+      const anlauf = terrainY(x0 - 700) - terrainY(x0);
+      const sc = fall + 2 * H + 1.5 * anlauf;
+      if (!best || sc > best.sc) best = { x0, H, fall, sc };
+    }
+    // Etwa die Hälfte der Schanzen wird als Holzkonstruktion gezeichnet –
+    // reine Optik, gefahren wird auf derselben Geländekante.
+    if (best) JUMPS.push({ x0: best.x0, L: sl.L, H: best.H,
+                           holz: hash(best.x0 * 0.013 + SEED * 3.7) > 0.45 });
+  }
+  // Vor jedes Becken ohne Brücke kommt eine Schanze. Sie steht fest an der
+  // Kante statt an der besten Stelle – ohne sie käme man nicht hinüber.
+  for (const r of RAVINES) {
+    if (!r.lava || r.bruecke) continue;
+    const L = 210, x0 = r.x1 - 60 - L;
+    let H = 1e9;                        // wie bei den anderen Schanzen gedeckelt
+    for (let t = 0.15; t < 1.02; t += 0.05)
+      H = Math.min(H, (0.95 - slopeAt(x0 + t * L)) * L / (2 * t));
+    r.rampe = { x0, L, H: Math.max(45, Math.min(H, 200)) };
+    JUMPS.push({ x0, L, H: r.rampe.H, holz: true });
+  }
+  for (let i = 0; i < TFIELD.length; i++) TFIELD[i] += jumpRise(i * TSTEP);
+
+  bauFinale();
+
+  // Deck einmessen: Höhe dort ablesen, wo es aufliegt (außerhalb der
+  // Abbruchkante), und die Geländesteigung davor/dahinter merken. Damit legt
+  // bridgeAt() die Deckenden tangential ans Gelände – der Berg selbst bleibt
+  // unangetastet, es entsteht also keine neue Steilstelle.
+  // Auflager sind die höchsten Bodenstellen im Randstreifen neben der Schlucht.
+  // Dort liegt das Deck auf, und zwischen Auflager und Abbruchkante kann kein
+  // Bodenbuckel mehr darüber hinausragen. Das Maximum ist außerdem von sich aus
+  // unempfindlich gegen die schon abgegrabenen Rasterpunkte an der Kante.
+  const anchor = (from, to) => {
+    let bx = from, by = terrainY(from);
+    for (let x = from + 2; x <= to; x += 2) {
+      const y = terrainY(x);
+      if (y > by) { by = y; bx = x; }
+    }
+    return bx;
+  };
+  for (const r of RAVINES) {
+    if (!r.bruecke) continue;              // Becken zum Drüberspringen
+    r.bx1 = anchor(r.x1 - BOFF, r.x1 - 4);
+    r.bx2 = anchor(r.x2 + 4, r.x2 + BOFF);
+    r.y1 = terrainY(r.bx1); r.y2 = terrainY(r.bx2);
+    r.s0 = (r.y2 - r.y1) / (r.bx2 - r.bx1);
+    r.k1 = (r.y1 - terrainY(r.bx1 - 12)) / 12 - r.s0;
+    r.k2 = (terrainY(r.bx2 + 12) - r.y2) / 12 - r.s0;
+    r.E = Math.min(150, (r.bx2 - r.bx1) * 0.3);
+    // Zwischen Auflager und Abbruchkante den Boden auf Deckhöhe kappen. Das
+    // sind wenige Pixel und nur dort, wo er sonst über das Deck ragen würde.
+    for (const [a, b] of [[r.bx1, r.x1], [r.x2, r.bx2]]) {
+      for (let i = Math.ceil(a / TSTEP); i * TSTEP <= b; i++)
+        TFIELD[i] = Math.min(TFIELD[i], deckAt(r, i * TSTEP).y);
+    }
+  }
+
+  // Lavaspiegel erst jetzt setzen, wenn der Boden endgültig steht: er liegt
+  // über der tiefsten Stelle der Kerbe, aber unter der niedrigeren der beiden
+  // Kanten – sonst liefe die Lava über den Rand.
+  for (const r of RAVINES) {
+    if (!r.lava) continue;
+    let tief = Infinity;
+    for (let x = r.x1; x <= r.x2; x += 8) tief = Math.min(tief, terrainY(x));
+    const rand = Math.min(terrainY(r.x1), terrainY(r.x2));
+    // gut halb voll, aber immer deutlich unter der niedrigeren Kante
+    r.lavaY = Math.min(rand - 40, tief + r.D * 0.55);
+  }
+  planGeysers();
+}
+
+/* ---- Das Finale ---------------------------------------------------------
+   Sobald das Gelände die Höhe der Anlaufbahn erreicht, wird von Hand weiter-
+   gebaut statt gewürfelt: eben, dann eine gerade Rampe auf 1000 m, dahinter
+   fällt der Berg weg. Alles danach überschreibt das Höhenfeld vollständig –
+   nur so ist die Bahn wirklich eben und der Gipfel wirklich auf 1000 m.   */
+let FINALE = null;
+function bauFinale() {
+  const bahn = CFG.GIPFEL - CFG.FINAL_RISE;
+  let i0 = -1;
+  for (let i = 0; i < TFIELD.length; i++)
+    if (TFIELD[i] >= bahn) { i0 = i; break; }
+  if (i0 < 0) { FINALE = null; return; }          // Strecke bleibt darunter
+
+  // Steigung wächst linear von s0 auf s1. Die Fläche unter dieser Geraden ist
+  // der Höhengewinn, also ist die Rampe so lang wie Höhe / mittlere Steigung.
+  const s0 = CFG.FINAL_SLOPE0, s1 = CFG.FINAL_SLOPE1;
+  const xBahn = i0 * TSTEP;
+  const xBerg = xBahn + CFG.FINAL_FLAT;
+  const L = CFG.FINAL_RISE / ((s0 + s1) / 2);
+  const xGipfel = xBerg + L;
+  FINALE = { xBahn, xBerg, xGipfel, bahn, L, s0, s1 };
+  for (let i = i0; i < TFIELD.length; i++) {
+    const x = i * TSTEP;
+    if (x <= xBerg) { TFIELD[i] = bahn; continue; }
+    if (x <= xGipfel) {
+      const u = (x - xBerg) / L;
+      TFIELD[i] = bahn + L * (s0 * u + (s1 - s0) * u * u / 2);
+      continue;
+    }
+    TFIELD[i] = Math.max(bahn, CFG.GIPFEL - (x - xGipfel) * CFG.FINAL_DROP);
+  }
+  // Sonderstellen, die in den überschriebenen Teil fielen, gibt es nicht mehr
+  WALLS = WALLS.filter(w => w.x0 + w.L < xBahn);
+  JUMPS = JUMPS.filter(j => j.x0 + j.L + JDROP < xBahn);
+  RAVINES = RAVINES.filter(r => r.x2 < xBahn);
+}
+
+/* ---- Lavageysire --------------------------------------------------------
+   Stehen in der Vulkanzone auf flachem Boden und brechen im festen Takt aus:
+   erst Blubbern als Vorwarnung, dann die Säule. Wer beim Ausbruch drin steht,
+   ist weg – also durchfahren, solange Ruhe ist.                          */
+let GEYSERS = [];
+function planGeysers() {
+  GEYSERS = [];
+  for (let k = 0; ; k++) {
+    const mitte = 10000 + k * 3000 + hash(k * 5.3 + SEED + 120) * 1200;
+    if (mitte > TEND - 1200) break;
+    let best = null;
+    for (let x = mitte - 900; x <= mitte + 900; x += 40) {
+      const h = terrainY(x);
+      if (h < CFG.LAVALINE + CFG.ZONE_FADE || h > CFG.SPACELINE - 200) continue;
+      if (RAVINES.some(r => x > r.x1 - 260 && x < r.x2 + 260)) continue;
+      if (WALLS.some(w => x > w.x0 - 300 && x < w.x0 + w.L + 300)) continue;
+      if (JUMPS.some(j => x > j.x0 - 300 && x < j.x0 + j.L + 400)) continue;
+      const steil = Math.abs(slopeAt(x));
+      if (!best || steil < best.steil) best = { x, steil };
+    }
+    // Flacher als vorher: ein Krater am Steilhang sieht aus wie angeklebt
+    if (best && best.steil < 0.3)
+      GEYSERS.push({ x: best.x, y: terrainY(best.x),
+                     H: 210 + hash(best.x * 0.017 + SEED) * 150,
+                     periode: CFG.GEY_PERIODE[0]
+                            + hash(best.x * 0.031 + SEED) * (CFG.GEY_PERIODE[1] - CFG.GEY_PERIODE[0]),
+                     phase: hash(best.x * 0.011 + SEED) * 10 });
+  }
+}
+
+// Zustand eines Geysirs zum Zeitpunkt t: 0 = Ruhe, sonst Anteil der Säule
+function geyserAt(g, t) {
+  const p = ((t + g.phase) % g.periode + g.periode) % g.periode;
+  const warn = g.periode - CFG.GEY_WARN - CFG.GEY_DAUER;
+  if (p < warn) return { warnung: 0, hoehe: 0 };
+  if (p < warn + CFG.GEY_WARN) return { warnung: (p - warn) / CFG.GEY_WARN, hoehe: 0 };
+  const q = (p - warn - CFG.GEY_WARN) / CFG.GEY_DAUER;      // 0..1 im Ausbruch
+  return { warnung: 1, hoehe: Math.sin(Math.PI * Math.min(1, q)) };
+}
+
+function terrainY(x) {
+  if (x <= 0) return TFIELD[0];
+  if (x >= TEND) return TFIELD[TFIELD.length - 1];
+  const t = x / TSTEP, i = t | 0;
+  return TFIELD[i] + (TFIELD[i + 1] - TFIELD[i]) * (t - i);
+}
+function slopeAt(x) { return (terrainY(x + 2) - terrainY(x - 2)) / 4; }
+
+function gripAt(x, y) {
+  const snow = smooth((y - CFG.SNOWLINE) / CFG.SNOW_FADE);
+  const g = 1 - (1 - Math.min(1, CFG.GRIP_SNOW * MOD.snowGrip)) * snow;
+  // Regen nässt nur den freien Fels – oben liegt ohnehin Schnee
+  return g * (1 - CFG.WEA_RAIN_GRIP * WEA.wet * (1 - snow));
+}
+
+/* =========================================================================
+   PHYSIK – drei Verlet-Partikel als starres Dreieck: die beiden Räder und
+   die Fahrermasse über der Achslinie. Weil der Fahrer schwerer ist als die
+   Räder, liegt der Schwerpunkt auf Sitzhöhe – genau darum dreht sich das
+   Bike in der Luft, und beim Landen kippt es darum nach vorn oder hinten.
+   w ist die inverse Masse: 1 für ein Rad, 1/BODY_M für den Fahrer.
+   ========================================================================= */
+// sag/sagV sind der Federweg und seine Geschwindigkeit – reine Optik
+const rear  = { x: 0, y: 0, px: 0, py: 0, w: 1, r: CFG.WHEEL_R, grounded: false, tx: 1, ty: 0, nx: 0, ny: 1, spin: 0, spinV: 0, sag: 0, sagV: 0, vUp: 0, lx: 0, ly: 0 };
+const front = { x: 0, y: 0, px: 0, py: 0, w: 1, r: CFG.WHEEL_R, grounded: false, tx: 1, ty: 0, nx: 0, ny: 1, spin: 0, spinV: 0, sag: 0, sagV: 0, vUp: 0, lx: 0, ly: 0 };
+const body  = { x: 0, y: 0, px: 0, py: 0, w: 1 / CFG.BODY_M };
+const PARTS = [rear, front, body];
+// Aus Radstand, Sitzhöhe und Fahrermasse abgeleitet:
+//   SEAT_DR/DF  Abstand Hinter-/Vorderrad zum Fahrer (Seiten des Dreiecks)
+//   COM_H/COM_F Lage des Schwerpunkts über bzw. vor der Achsmitte
+let SEAT_DR = 0, SEAT_DF = 0, MASS_SUM = 0, COM_H = 0, COM_F = 0;
+function recalcMass() {
+  body.w = 1 / CFG.BODY_M;
+  SEAT_DR = Math.hypot(CFG.WHEELBASE / 2 + CFG.SEAT_FWD, CFG.SEAT_H);
+  SEAT_DF = Math.hypot(CFG.WHEELBASE / 2 - CFG.SEAT_FWD, CFG.SEAT_H);
+  MASS_SUM = 2 + CFG.BODY_M;
+  COM_H = CFG.BODY_M * CFG.SEAT_H / MASS_SUM;
+  COM_F = CFG.BODY_M * CFG.SEAT_FWD / MASS_SUM;
+}
+
+recalcMass();
+
+function addVel(p, dvx, dvy, h) { p.px -= dvx * h; p.py -= dvy * h; }
+
+// Fahrermasse aus der Radlage neu setzen (Start, Respawn, Teleport)
+function seatBody() {
+  const b = bodyDir();
+  const vx = body.x - body.px, vy = body.y - body.py;
+  body.x = (rear.x + front.x) / 2 + b.ux * CFG.SEAT_H + b.dx * CFG.SEAT_FWD;
+  body.y = (rear.y + front.y) / 2 + b.uy * CFG.SEAT_H + b.dy * CFG.SEAT_FWD;
+  body.px = body.x - vx; body.py = body.y - vy;
+}
+
+let GRAVK = 1;              // Wetter-Faktor auf die Gravitation, siehe step()
+
+function integrate(p, h) {
+  const vx = (p.x - p.px) * CFG.AIR_DAMP, vy = (p.y - p.py) * CFG.AIR_DAMP;
+  p.px = p.x; p.py = p.y;
+  p.x += vx;
+  p.y += vy - CFG.GRAV * GRAVK * h * h;
+}
+
+// Starre Strecke zwischen zwei Partikeln, Korrektur nach inverser Masse
+function link(a, b, len) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const d = Math.hypot(dx, dy) || 1;
+  const f = (d - len) / d / (a.w + b.w);
+  a.x += dx * f * a.w;  a.y += dy * f * a.w;
+  b.x -= dx * f * b.w;  b.y -= dy * f * b.w;
+}
+
+function constrain() {
+  link(rear, front, CFG.WHEELBASE);
+  link(rear, body, SEAT_DR);
+  link(front, body, SEAT_DF);
+}
+
+/* Sicherheitsnetz gegen aufschaukelnde Landungen. Die Constraint-Auflösung
+   verschiebt Positionen, und in Verlet ist eine verschobene Position dasselbe
+   wie Tempo: bei harten Landungen kann das starre Dreieck aus Rädern und
+   Fahrer mehr Energie herausgeben, als hineingesteckt wurde. Gemessen sind so
+   einzelne Läufe mit 24000 px/s senkrecht in den Himmel geschossen und haben
+   nebenbei 56000 Punkte gutgeschrieben. 36 px pro Substep sind 4300 px/s –
+   mehr als ein Sturz aus 2300 px Höhe, im normalen Fahren also unerreichbar. */
+function capV(p) {
+  const vx = p.x - p.px, vy = p.y - p.py, v2 = vx * vx + vy * vy;
+  if (v2 <= CFG.V_MAX * CFG.V_MAX) return;
+  const k = CFG.V_MAX / Math.sqrt(v2);
+  p.px = p.x - vx * k; p.py = p.y - vy * k;
+}
+
+function collide(p, h, braking) {
+  let gy = terrainY(p.x), sl = slopeAt(p.x);
+  const br = bridgeAt(p.x);
+  // Brücke trägt nur, wenn das Rad von oben kommt – von unten fällt man durch.
+  // Zusätzlich muss es dicht am Deck sein: wer in einem einzigen Schritt weit
+  // darunter gerutscht ist, ist durchgefallen und darf nicht zurückgerissen
+  // werden (gemessen wurden Rückwürfe um 200 px).
+  if (br && br.y > gy && p.py - p.r >= br.y - 4 && p.y > br.y - CFG.MAX_PEN) {
+    gy = br.y; sl = br.s;
+  }
+
+  let pen = gy + p.r - p.y;
+  if (pen <= 0) { p.grounded = false; return; }
+  // Tiefes Eindringen nur stückweise auflösen. Sonst verzerrt ein einziger
+  // großer Schub das starre Dreieck aus Rädern und Fahrer so stark, dass die
+  // Constraint-Auflösung daraus Tempo macht und das Bike senkrecht wegfliegt.
+  pen = Math.min(pen, CFG.MAX_PEN);
+
+  const nl = Math.hypot(sl, 1);
+  const nx = -sl / nl, ny = 1 / nl;      // Normale
+  const tx = ny, ty = -nx;               // Tangente in +x
+
+  let vx = p.x - p.px, vy = p.y - p.py;  // Verschiebung pro Substep
+  p.x += nx * pen; p.y += ny * pen;
+
+  let vn = vx * nx + vy * ny;
+  let vt = vx * tx + vy * ty;
+  // Aufprall in die Federung geben, bevor die Restitution ihn wegnimmt. Hier
+  // steht die echte Auftreffgeschwindigkeit – über ein ganzes Bild gemittelt
+  // wäre nur noch die Hälfte davon übrig.
+  // Unterhalb der Schwelle passiert nichts: im Stand drückt die Schwerkraft
+  // das Rad in jedem Substep ein Stück ein, und ohne Filter zittert die
+  // Federung davon dauerhaft.
+  const auf = -vn / h;
+  if (auf > CFG.SUSP_MIN) p.sagV += (auf - CFG.SUSP_MIN) * CFG.SUSP_HIT;
+  if (vn < 0) vn = -vn * CFG.REST;
+  // Nasser Boden: die Bremse packt deutlich schlechter -> man rutscht weiter
+  const fric = braking ? CFG.BRAKE_FRIC * (1 - CFG.WEA_RAIN_BRAKE * WEA.wet)
+                       : CFG.ROLL_FRIC;
+  vt *= 1 - fric;
+
+  vx = tx * vt + nx * vn; vy = ty * vt + ny * vn;
+  p.px = p.x - vx; p.py = p.y - vy;
+
+  p.spinV = vt / p.r;            // Winkel pro Substep, trägt in der Luft weiter
+  p.spin += p.spinV;
+  p.grounded = true; p.nx = nx; p.ny = ny; p.tx = tx; p.ty = ty;
+}
+
+/* Federweg als gedämpfter Schwinger. Den Stoß bekommt er aus der Kollision,
+   das Ausschwingen rechnet diese Funktion einmal pro Bild. */
+function federReset() {
+  for (const p of [rear, front]) { p.sag = 0; p.sagV = 0; }
+}
+
+function federung(dt) {
+  for (const p of [rear, front]) {
+    const ruhe = p.grounded ? CFG.SUSP_SAG : 0;    // in der Luft ausgefedert
+    p.sagV += (-(p.sag - ruhe) * CFG.SUSP_K - p.sagV * CFG.SUSP_C) * dt;
+    p.sag += p.sagV * dt;
+    if (p.sag < 0) { p.sag = 0; if (p.sagV < 0) p.sagV = 0; }
+    else if (p.sag > CFG.SUSP_TRAVEL) {
+      p.sag = CFG.SUSP_TRAVEL; if (p.sagV > 0) p.sagV = 0;
+    }
+  }
+}
+
+// Rahmen hängt auf einer Kuppe auf -> rausschieben und Tempo verlieren
+function bellyCollide() {
+  for (const f of [0.3, 0.5, 0.7]) {
+    const x = rear.x + (front.x - rear.x) * f;
+    const y = rear.y + (front.y - rear.y) * f;
+    const gy = groundUnder(x, y) + 7;
+    if (y < gy) {
+      const pen = (gy - y) * 0.5;
+      rear.y += pen; front.y += pen; body.y += pen;
+      rear.px += (rear.x - rear.px) * 0.18;
+      front.px += (front.x - front.px) * 0.18;
+    }
+  }
+}
+
+function bodyDir() {
+  const dx = front.x - rear.x, dy = front.y - rear.y;
+  const L = Math.hypot(dx, dy) || 1;
+  return { dx: dx / L, dy: dy / L, ux: -dy / L, uy: dx / L };  // Vorwärts + "Oben"
+}
+
+function angularVel(h) {                     // rad/s, positiv = Nase hoch
+  const b = bodyDir();
+  const rvx = (front.x - front.px) - (rear.x - rear.px);
+  const rvy = (front.y - front.py) - (rear.y - rear.py);
+  return ((rvx * b.ux + rvy * b.uy) / h) / CFG.WHEELBASE;
+}
+
+function applyTorque(acc, h) {               // acc>0 = Nase hoch
+  if (!acc) return;
+  const w = angularVel(h);
+  if (Math.abs(w) > CFG.MAX_OMEGA && Math.sign(w) === Math.sign(acc)) return;
+  const b = bodyDir();
+  const dv = acc * h;
+  addVel(front, b.ux * dv, b.uy * dv, h);
+  addVel(rear, -b.ux * dv, -b.uy * dv, h);
+}
+
+function step(h) {
+  const gas = IN.gas || G.boosting, brake = IN.brake;   // Boost gibt auch ohne Gas Schub
+  const bAcc = G.boosting ? CFG.BOOST_ACC : 1;
+  const bSpd = G.boosting ? CFG.BOOST_SPD : 1;
+  const air = !rear.grounded && !front.grounded;
+  GRAVK = gravFactor() * (air ? CFG.AIR_GRAV : 1);
+  // Ab der Gipfelhöhe ist Schluss mit Schwerkraft – wer dort abspringt, fliegt
+  // geradeaus weiter ins Weltall.
+  if ((rear.y + front.y) / 2 >= CFG.GIPFEL) GRAVK = 0;
+
+  if (rear.grounded) {
+    const grip = gripAt(rear.x, rear.y);
+    const vt = ((rear.x - rear.px) * rear.tx + (rear.y - rear.py) * rear.ty) / h;
+    // Antrieb und Bremse greifen am ganzen Aufbau an, nicht nur am Hinterrad.
+    // Am Rad allein würden sie über den hohen Schwerpunkt die Nase hochhebeln
+    // und das Bike an jedem Steilhang nach hinten überschlagen – gemessen 10
+    // von 10 Läufen nach 6 Sekunden. Ob überhaupt Schub da ist, hängt weiter
+    // am Hinterrad: Bodenkontakt und Grip werden dort abgefragt.
+    if (gas && vt < CFG.MAXSPD * MOD.maxSpd * bSpd) {
+      const a = CFG.ACC * MOD.acc * bAcc * grip * h / 2;
+      for (const p of PARTS) addVel(p, rear.tx * a, rear.ty * a, h);
+    }
+    if (brake && vt > -CFG.MAXREV) {
+      const a = CFG.BRAKE_ACC * grip * h / 2;
+      for (const p of PARTS) addVel(p, -rear.tx * a, -rear.ty * a, h);
+    }
+    // Krallen: hält den Fahrer am Hang. Muss stärker sein als der Hangabtrieb
+    // (bis 1390 px/s²) und wirkt nur, wenn weder Gas noch Bremse anliegt –
+    // absichtliches Rückwärtsfahren für den Anlauf bleibt möglich.
+    if (MOD.ult === "krallen" && !gas && !brake && vt < 0) {
+      const dv = Math.min(-vt, 3000 * h) / 2;
+      for (const p of PARTS) addVel(p, rear.tx * dv, rear.ty * dv, h);
+    }
+  }
+
+  const tqAir = CFG.TQ_AIR * MOD.torqueAir;
+  let tq = 0;
+  // Am Boden hebt Gas die Nase – beim Boost nicht, sonst kippt das Bike an
+  // Steilwänden nach hinten weg. Der Schub drückt, er reißt nicht hoch.
+  if (gas)   tq += air ? tqAir : (G.boosting ? 0 : CFG.TQ_GROUND);
+  if (brake) tq -= air ? tqAir : CFG.TQ_GROUND * 0.8;
+  applyTorque(tq, h);
+
+  // Drehung klingt in der Luft ab. Gegriffen wird direkt am Drehanteil der
+  // Relativgeschwindigkeit der beiden Räder – gleich viel nach beiden Seiten,
+  // der Schwerpunkt bleibt also unberührt.
+  if (air && CFG.SPIN_DAMP) {
+    const b = bodyDir();
+    const rel = ((front.x - front.px) - (rear.x - rear.px)) * b.ux
+              + ((front.y - front.py) - (rear.y - rear.py)) * b.uy;
+    const dv = rel * CFG.SPIN_DAMP / 2;
+    addVel(front, -b.ux * dv, -b.uy * dv, h);
+    addVel(rear,   b.ux * dv,  b.uy * dv, h);
+  }
+
+  // Wind und Auftrieb greifen am ganzen Bike an – auf alle drei Massen gleich,
+  // sonst hinge ihre Wirkung an der Massenverteilung.
+  const aw = windAcc(air), al = liftAcc();
+  if (aw || al) for (const p of PARTS) addVel(p, aw * h, al * h, h);
+
+  for (const p of PARTS) integrate(p, h);
+  for (let i = 0; i < 6; i++) constrain();
+  collide(rear, h, IN.brake);
+  collide(front, h, IN.brake);
+  bellyCollide();
+  for (const p of PARTS) capV(p);
+
+  // Räder laufen in der Luft weiter, statt einzufrieren
+  if (!rear.grounded)  { rear.spin  += rear.spinV;  rear.spinV  *= 0.999; }
+  if (!front.grounded) { front.spin += front.spinV; front.spinV *= 0.999; }
+}
+
+/* =========================================================================
+   SPIEL-ZUSTAND
+   ========================================================================= */
+const G = {
+  state: "menu",           // menu | play | over
+  score: 0, maxY: 0, fuel: 100, lives: 0,
+  boost: 100, boosting: false, boostIdle: 0,
+  reason: "", best: 0,
+  airTime: 0, spinAcc: 0, touch: 0, lastAng: 0,
+  time: 0, zone: 0,           // wie viele Gebietsgrenzen in diesem Lauf schon überfahren
+  weltall: null,              // s seit dem Absprung ins All (null = noch am Berg)
+  geschafft: false,           // Lauf mit dem Absprung beendet, nicht mit einem Crash
+};
+
+// Die Gebiete oberhalb des Schnees, in der Reihenfolge, in der man sie erreicht
+const ZONES = [
+  { y: CFG.ICELINE,   icon: "❄️", name: "Eiszone" },
+  { y: CFG.LAVALINE,  icon: "🌋", name: "Vulkanzone" },
+  { y: CFG.SPACELINE, icon: "✨", name: "Sternenzone" },
+  { y: CFG.GIPFEL,    icon: "🚀", name: "Schwerelos" },
+];
+const cans = new Map();    // index -> eingesammelt?
+
+try { G.best = Math.max(0, parseInt(localStorage.getItem("hcb.best") || "0", 10) || 0); } catch (e) {}
+
+function canPos(k) {
+  const x = k * CFG.CAN_SPACING + 500 + hash(k * 3.7) * 400;
+  return { x, y: terrainY(x) + 20 };
+}
+
+/* =========================================================================
+   WETTER – zieht im Lauf einer Runde zufällig auf und greift ins Fahren ein:
+     Regen     macht den Boden rutschig – weniger Grip, kaum noch Bremse
+     Gewitter  Regen plus Blitze, die mit Vorwarnung am Boden einschlagen
+     Sturm     dauerhafter Gegenwind, der in Böen an- und abschwillt
+     Tornado   saugt zum Trichter hin und macht in seiner Nähe leicht
+   Alles läuft über WEA.p (0..1) ein und aus, damit nichts hart umspringt.
+   ========================================================================= */
+const WKIND = {
+  regen:    { name: "Regen",    icon: "🌧️", dauer: [16, 26], gewicht: 34 },
+  gewitter: { name: "Gewitter", icon: "⛈️", dauer: [15, 24], gewicht: 26 },
+  sturm:    { name: "Sturm",    icon: "🌬️", dauer: [16, 26], gewicht: 28 },
+  tornado:  { name: "Tornado",  icon: "🌪️", dauer: [12, 18], gewicht: 12 },
+};
+const WEA = {
+  kind: "klar", left: 0, p: 0, wet: 0, next: 0, gust: 1, spin: 0,
+  boltIn: 0, warnX: 0, warnLeft: 0, flash: 0, bolt: null, tx: 0,
+};
+const rnd = (a, b) => a + Math.random() * (b - a);
+const bikeX = () => (rear.x + front.x) / 2;
+
+function weatherReset() {
+  WEA.kind = "klar"; WEA.left = 0; WEA.p = 0; WEA.wet = 0; WEA.gust = 1;
+  WEA.boltIn = 0; WEA.warnLeft = 0; WEA.flash = 0; WEA.bolt = null;
+  WEA.next = rnd(CFG.WEA_FIRST[0], CFG.WEA_FIRST[1]);
+  // im Testmodus festgehaltene Lage überlebt den Neustart, sonst wäre sie weg
+  if (DBG.hold && DBG.forced && DBG.forced !== "klar") startWeather(DBG.forced, 600);
+}
+
+function pickWeather() {
+  const keys = Object.keys(WKIND);
+  let sum = 0;
+  for (const k of keys) sum += WKIND[k].gewicht;
+  let r = Math.random() * sum;
+  for (const k of keys) { r -= WKIND[k].gewicht; if (r <= 0) return k; }
+  return keys[0];
+}
+
+function startWeather(kind, dauer) {
+  WEA.kind = kind;
+  WEA.left = dauer != null ? dauer : rnd(WKIND[kind].dauer[0], WKIND[kind].dauer[1]);
+  WEA.boltIn = rnd(1.2, 2.6);
+  WEA.warnLeft = 0;
+  if (kind === "tornado") WEA.tx = bikeX() + rnd(1000, 1700);
+  toast(WKIND[kind].icon + " " + WKIND[kind].name + " zieht auf");
+}
+
+// Wirkung des Tornados nimmt mit dem Abstand ab
+function tornadoFall(d) { return smooth(1 - d / CFG.WEA_TORNADO_R); }
+
+// Gegenwind als Beschleunigung. Wirkt auf den ganzen Aufbau, deshalb wird sie
+// in step() auf beide Partikel gelegt – nicht wie der Antrieb nur aufs Hinterrad.
+function windAcc(air) {
+  let w = 0;
+  if (WEA.kind === "sturm")         w = -CFG.WEA_WIND * WEA.p * WEA.gust;
+  else if (WEA.kind === "gewitter") w = -CFG.WEA_WIND * 0.45 * WEA.p * WEA.gust;
+  else if (WEA.kind === "tornado") {
+    // Der Trichter zieht an, egal von welcher Seite – und er saugt gleichmäßig,
+    // deshalb geht die Böe hier nur zu einem Viertel ein.
+    const d = WEA.tx - bikeX();
+    w = Math.sign(d) * CFG.WEA_WIND * CFG.WEA_TORNADO_PULL * WEA.p
+      * tornadoFall(Math.abs(d)) * (0.75 + 0.25 * WEA.gust);
+  }
+  return w * (air ? 1 : CFG.WEA_WIND_GROUND);
+}
+
+function gravFactor() {
+  if (WEA.kind !== "tornado") return 1;
+  return 1 - (1 - CFG.WEA_TORNADO_GRAV) * WEA.p * tornadoFall(Math.abs(WEA.tx - bikeX()));
+}
+
+// Auftrieb des Trichters. Wirkt auf beide Räder gleich, dreht das Bike also
+// nicht, und verschwindet mit der Höhe – das Bike wird angehoben, nicht
+// weggeschossen.
+function liftAcc() {
+  if (WEA.kind !== "tornado" || WEA.p <= 0) return 0;
+  const bx = bikeX(), by = (rear.y + front.y) / 2;
+  const f = tornadoFall(Math.abs(WEA.tx - bx));
+  if (f <= 0) return 0;
+  const h = by - groundUnder(bx, by) - CFG.WHEEL_R;      // Höhe über der Ruhelage
+  return CFG.WEA_TORNADO_LIFT * WEA.p * f * smooth(1 - h / CFG.WEA_TORNADO_LIFT_H);
+}
+
+function blitzEin() {
+  const x = WEA.warnX, y = groundUnder(x, 1e9);
+  // Zickzack: das Vorzeichen wechselt von Punkt zu Punkt, die Auslenkung wird
+  // nach unten hin kleiner, damit die Spitze genau auf der Einschlagstelle sitzt
+  const top = y + rnd(1100, 1700), N = 12, pts = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N, amp = 105 * (1 - t * t) * (0.35 + Math.random() * 0.65);
+    pts.push([x + (i % 2 ? amp : -amp), top + (y - top) * t]);
+  }
+  pts[N] = [x, y];
+  // eine Abzweigung ab der Mitte
+  const k = 4 + Math.floor(Math.random() * 4), ast = [pts[k]];
+  for (let i = 1; i <= 3; i++)
+    ast.push([pts[k][0] + (i % 2 ? 1 : -1) * 70 * i * (0.5 + Math.random()) * (Math.random() < 0.5 ? -1 : 1),
+              pts[k][1] - i * 130]);
+  WEA.bolt = { pts, ast, t: 0.34 };
+  WEA.flash = 1;
+  if (!DBG.god && Math.abs(bikeX() - x) < CFG.WEA_BOLT_HIT) {
+    if (G.lives > 0) { G.lives--; respawn(); toast("⚡ Blitz! Schutzengel weg"); }
+    else gameOver("⚡ Vom Blitz getroffen!");
+  }
+}
+
+function updateWeather(dt) {
+  WEA.spin += dt;
+  // Böen: zwei Sinus übereinander – unregelmäßig, aber ohne Zufallssprünge
+  WEA.gust = 0.62 + 0.38 * Math.sin(G.time * 1.9) * Math.sin(G.time * 0.61 + 1.2);
+
+  if (WEA.kind === "klar") {
+    if (!DBG.hold) {
+      WEA.next -= dt;
+      if (WEA.next <= 0) startWeather(pickWeather());
+    }
+  } else {
+    WEA.left -= dt;
+    if (WEA.left <= 0 && WEA.p < 0.02) {
+      WEA.kind = "klar"; WEA.p = 0; WEA.bolt = null; WEA.warnLeft = 0;
+      WEA.next = rnd(CFG.WEA_PAUSE[0], CFG.WEA_PAUSE[1]);
+    }
+  }
+  const ziel = WEA.left > 0 ? 1 : 0;
+  const rate = dt / (ziel > WEA.p ? 2.5 : 3.2);
+  WEA.p += Math.max(-rate, Math.min(rate, ziel - WEA.p));
+
+  // Nässe steigt mit dem Regen und trocknet danach langsam ab
+  const regen = (WEA.kind === "regen" || WEA.kind === "gewitter") ? WEA.p : 0;
+  WEA.wet += (regen - WEA.wet) * Math.min(1, dt * (regen > WEA.wet ? 0.55 : 0.17));
+
+  // Der Trichter wandert auf den Fahrer zu und wird neu gesetzt, wenn er durch ist
+  if (WEA.kind === "tornado") {
+    WEA.tx += (-70 + Math.sin(G.time * 0.7) * 25) * dt;
+    if (WEA.tx < bikeX() - 1500) WEA.tx = bikeX() + rnd(1400, 2200);
+  }
+
+  if (WEA.bolt) { WEA.bolt.t -= dt; if (WEA.bolt.t <= 0) WEA.bolt = null; }
+  WEA.flash = Math.max(0, WEA.flash - dt * 3.4);
+
+  if (WEA.kind === "gewitter" && WEA.p > 0.4) {
+    if (WEA.warnLeft > 0) {
+      WEA.warnLeft -= dt;
+      if (WEA.warnLeft <= 0) { WEA.warnLeft = 0; blitzEin(); }
+    } else {
+      WEA.boltIn -= dt;
+      if (WEA.boltIn <= 0) {
+        // Der Blitz hält vor: er zielt dahin, wo der Fahrer in WEA_BOLT_WARN
+        // Sekunden wäre. Ohne das Vorhalten trifft er einen Fahrenden nie,
+        // mit Vorhalten weicht man durch Bremsen oder Gas aus – das ist der Reiz.
+        const vx = (rear.x - rear.px) * 120;
+        WEA.warnX = bikeX() + vx * CFG.WEA_BOLT_WARN * CFG.WEA_BOLT_LEAD
+                  + rnd(-CFG.WEA_BOLT_SPREAD, CFG.WEA_BOLT_SPREAD);
+        WEA.warnLeft = CFG.WEA_BOLT_WARN;
+        WEA.boltIn = rnd(CFG.WEA_BOLT_EVERY[0], CFG.WEA_BOLT_EVERY[1]);
+      }
+    }
+  } else if (WEA.kind !== "gewitter") {
+    WEA.warnLeft = 0;
+  }
+}
+
+function reset() {
+  SEED = Math.random() * 100;
+  buildTerrain();
+  applyBuffs();
+  const x0 = 80, y0 = terrainY(x0) + CFG.WHEEL_R;
+  rear.x = x0; rear.y = y0;
+  front.x = x0 + CFG.WHEELBASE; front.y = terrainY(x0 + CFG.WHEELBASE) + CFG.WHEEL_R;
+  rear.px = rear.x; rear.py = rear.y;
+  front.px = front.x; front.py = front.y;
+  body.px = body.x = 0; body.py = body.y = 0; seatBody();
+  rear.spin = front.spin = rear.spinV = front.spinV = 0;
+  rear.grounded = front.grounded = false;
+  federReset();
+  G.score = 0; G.maxY = y0; G.fuel = 100; G.reason = ""; G.time = 0; G.zone = 0;
+  G.weltall = null; G.geschafft = false;
+  G.boost = 100; G.boosting = false; G.boostIdle = 0;
+  G.airTime = 0; G.spinAcc = 0; G.touch = 0;
+  G.lastAng = Math.atan2(front.y - rear.y, front.x - rear.x);
+  cans.clear();
+  weatherReset();
+  GRAVK = 1;
+  cam.x = rear.x; cam.y = rear.y;
+  IN.gas = IN.brake = IN.boost = false;
+}
+
+// Nach einem abgefangenen Sturz aufrecht neu absetzen
+// Becken unter dieser Stelle (oder null)
+function poolAt(x) {
+  for (const r of RAVINES) if (r.lava && x > r.x1 && x < r.x2) return r;
+  return null;
+}
+
+// Berührt das Bike gerade Lava? Liefert den Grund fürs Aus, sonst null.
+function lavaTreffer() {
+  for (const p of [rear, front]) {
+    const r = poolAt(p.x);
+    if (r && p.y - p.r < r.lavaY) return "🌋 In die Lava!";
+  }
+  const mx = bikeX(), my = (rear.y + front.y) / 2;
+  for (const g of GEYSERS) {
+    if (Math.abs(mx - g.x) > CFG.GEY_R + 10) continue;
+    const s = geyserAt(g, G.time);
+    if (s.hoehe > 0.05 && my - CFG.WHEEL_R < g.y + g.H * s.hoehe) return "🌋 Vom Geysir erwischt!";
+  }
+  return null;
+}
+
+// Stelle vor dem nächsten Hindernis, an der man wieder losfahren kann
+function safeX(x) {
+  for (let i = 0; i < 60; i++) {
+    const r = poolAt(x) || RAVINES.find(v => v.lava && x > v.x1 - 120 && x < v.x2 + 120);
+    const g = GEYSERS.find(v => Math.abs(x - v.x) < CFG.GEY_R + 90);
+    if (!r && !g) return x;
+    // weit genug vor die Schanze, dass wieder Anlauf möglich ist – direkt an
+    // der Rampe abgesetzt rollt man ohne Tempo gleich wieder hinein
+    x = r ? r.x1 - 650 : g.x - CFG.GEY_R - 140;
+  }
+  return x;
+}
+
+function respawn() {
+  const x = Math.max(60, safeX(rear.x - 40));
+  rear.x = x; rear.y = terrainY(x) + CFG.WHEEL_R + 3;
+  front.x = x + CFG.WHEELBASE; front.y = terrainY(x + CFG.WHEELBASE) + CFG.WHEEL_R + 3;
+  rear.px = rear.x; rear.py = rear.y;
+  front.px = front.x; front.py = front.y;
+  body.px = body.x = 0; body.py = body.y = 0; seatBody();
+  G.spinAcc = 0; G.airTime = 0; G.touch = 0;
+  G.lastAng = Math.atan2(front.y - rear.y, front.x - rear.x);
+  federReset();
+}
+
+function gameOver(reason) {
+  if (G.state !== "play") return;
+  G.state = "over";
+  G.reason = reason;
+  const sc = Math.floor(G.score);
+  if (sc > G.best) { G.best = sc; try { localStorage.setItem("hcb.best", String(sc)); } catch (e) {} }
+  G.earned = Math.floor(sc / 100);          // je 100 Punkte ein Coin
+  if (G.earned > 0) { coins += G.earned; saveProgress(); }
+  showOverlay(true);
+}
+
+function update(dt) {
+  if (G.state !== "play") return;
+  G.time += dt;
+
+  // Boost: verbraucht sich schnell, lädt nach kurzer Pause wieder auf
+  G.boosting = IN.boost && G.boost > 0;
+  if (G.boosting) {
+    const drain = CFG.BOOST_DRAIN * (MOD.ult === "zweiterAtem" ? 0.66 : 1);
+    G.boost = Math.max(0, G.boost - drain * dt);
+    G.boostIdle = 0;
+  } else {
+    G.boostIdle += dt;
+    if (G.boostIdle > CFG.BOOST_DELAY) {
+      const chg = CFG.BOOST_CHARGE * (MOD.ult === "kickstart" ? 2 : 1);
+      G.boost = Math.min(100, G.boost + chg * dt);
+    }
+  }
+
+  // Wetter vor der Physik: Grip, Wind und Gravitation gelten für diesen Schritt.
+  // Ein Blitz kann die Runde hier schon beenden.
+  updateWeather(dt);
+  if (G.state !== "play") return;
+
+  const SUB = 2, h = dt / SUB;
+  for (let i = 0; i < SUB; i++) step(h);
+  federung(dt);
+
+  const mx = (rear.x + front.x) / 2, my = (rear.y + front.y) / 2;
+  const b = bodyDir();
+
+  // Höhe & Punkte: höhere Meter sind mehr wert
+  if (my > G.maxY) {
+    const dm = (my - G.maxY) / CFG.PPM;
+    G.score += dm * (1 + G.maxY / (CFG.PPM * 100)) * MOD.score;
+    G.maxY = my;
+    // Gebietswechsel melden. Es zählt der höchste erreichte Übergang, damit
+    // beim Auf und Ab an einer Grenze nicht dauernd dieselbe Meldung kommt.
+    while (G.zone < ZONES.length && my > ZONES[G.zone].y) {
+      const z = ZONES[G.zone++];
+      toast(z.icon + " " + z.name + " · " + Math.round(z.y / CFG.PPM) + " m");
+    }
+  }
+
+  // Flips. Ein kurzes Aufsetzen mitten im Sprung – ein Rad streift eine Kuppe,
+  // das Bike hüpft weiter – darf die Zählung nicht beenden: sonst wird die
+  // Drehung davor und danach nie zusammengerechnet und der Bonus fällt aus.
+  // Gemessen ging so jeder sechste Flip verloren. Erst wenn das Bike LAND_GRACE
+  // Sekunden am Boden bleibt, gilt der Sprung als beendet.
+  // Gezählt wird der tatsächlich zurückgelegte Winkel, nicht das Integral einer
+  // geschätzten Drehrate: letzteres lag um ein paar Prozent daneben, und genau
+  // daran scheiterten die knappen Flips bei 1,00–1,03 Umdrehungen.
+  const winkel = Math.atan2(front.y - rear.y, front.x - rear.x);
+  let dW = winkel - G.lastAng;
+  while (dW > Math.PI) dW -= Math.PI * 2;
+  while (dW < -Math.PI) dW += Math.PI * 2;
+  G.lastAng = winkel;
+
+  const air = !rear.grounded && !front.grounded;
+  if (air) {
+    G.airTime += dt;
+    G.spinAcc += dW;
+    G.touch = 0;
+  } else if (G.airTime > 0) {
+    G.touch += dt;
+    G.spinAcc += dW;                      // Drehung während des Streifens zählt mit
+    if (G.touch >= CFG.LAND_GRACE) {
+      const umdr = Math.abs(G.spinAcc) / (Math.PI * 2);
+      const flips = umdr >= CFG.FLIP_MIN ? Math.floor(umdr - CFG.FLIP_MIN) + 1 : 0;
+      if (flips > 0 && G.airTime > 0.4) {
+        const bonus = Math.round(20 * flips * flips * MOD.flip * MOD.score);  // Höhe bleibt die Hauptquelle
+        G.score += bonus;
+        toast((G.spinAcc > 0 ? "Backflip" : "Frontflip") + (flips > 1 ? " ×" + flips : "") + "  +" + bonus);
+      }
+      G.spinAcc = 0; G.airTime = 0; G.touch = 0;
+    }
+  }
+
+  // Sprit – Boost schluckt doppelt (und gibt auch ohne Gas Schub). Im
+  // Weltraum-Finale läuft er nicht weiter, sonst reißt ein leerer Tank den
+  // Abspann mittendrin ab.
+  const gasOn = IN.gas || G.boosting;
+  if (G.weltall === null && !DBG.tank)
+    G.fuel -= (CFG.FUEL_IDLE + (gasOn ? CFG.FUEL_GAS : 0))
+            * (G.boosting ? CFG.BOOST_FUEL : 1) * MOD.fuel * dt;
+  if (DBG.tank) G.fuel = 100;
+  const k0 = Math.max(0, Math.floor((mx - 1500) / CFG.CAN_SPACING));
+  for (let k = k0; k <= k0 + 4; k++) {
+    if (cans.get(k)) continue;
+    const c = canPos(k);
+    if (Math.hypot(c.x - mx, c.y - my) < 44) {
+      cans.set(k, true);
+      const menge = Math.round(CFG.FUEL_CAN * (MOD.ult === "kanisterjaeger" ? 1.5 : 1));
+      G.fuel = Math.min(100, G.fuel + menge);
+      toast("+" + menge + "% Sprit");
+    }
+  }
+  if (G.fuel <= 0) { G.fuel = 0; gameOver("Kein Sprit mehr!"); return; }
+
+  // Weltraum-Finale: ab dem Gipfel schwebt man ein paar Sekunden, während das
+  // All um einen kreist – danach ist der Lauf zu Ende, aber gewonnen.
+  if (G.weltall !== null) {
+    G.weltall += dt;
+    if (G.weltall >= CFG.WELTALL_ZEIT) {
+      G.geschafft = true;
+      gameOver("🚀 Im Weltall!");
+      return;
+    }
+  } else if (my >= CFG.GIPFEL) {
+    G.weltall = 0;
+  }
+
+  // Crash: Kopf berührt den Boden
+  const hx = mx + b.ux * CFG.HEAD_H, hy = my + b.uy * CFG.HEAD_H;
+  if (hy < groundUnder(hx, my) && !DBG.god) {
+    if (G.lives > 0) { G.lives--; respawn(); toast("🛡 Schutzengel!"); }
+    else { gameOver("Aua – Kopfaufschlag!"); return; }
+  }
+
+  // Lava: Becken und Geysirsäule. Beides ist sofort aus – deshalb setzt der
+  // Schutzengel hier vor das Hindernis zurück und nicht mitten hinein.
+  if (!DBG.god) {
+    const grund = lavaTreffer();
+    if (grund) {
+      if (G.lives > 0) { G.lives--; respawn(); toast("🛡 Schutzengel!"); }
+      else { gameOver(grund); return; }
+    }
+  }
+
+  // Kamera
+  const vx = (rear.x - rear.px) / h;
+  const tX = mx + Math.max(-120, Math.min(240, vx * 0.28));
+  const tY = my + 50;
+  const k = Math.min(1, dt * 4.5);
+  cam.x += (tX - cam.x) * k;
+  cam.y += (tY - cam.y) * k;
+}
+
+/* =========================================================================
+   FAHRER – Bilder aus dem Ordner charaktere/, dazu Level und Fähigkeiten.
+   Jeder Fahrer hat einen Bonus, der über 5 Level wächst, und ab Level 5
+   zusätzlich eine Spezialfähigkeit. Bezahlt wird mit Coins (100 Punkte = 1).
+   Neuen Fahrer hinzufügen: Bild ablegen und hier einen Eintrag ergänzen.
+   ========================================================================= */
+const CHAR_DIR = "charaktere/";
+const MAXLV = 5;
+const LV_COST = [1, 2, 4, 6];        // Coins für Level 2, 3, 4, 5
+
+const up = v => "+" + Math.round((v - 1) * 100) + " %";
+const dn = v => "−" + Math.round((1 - v) * 100) + " %";
+
+const CHARS = [
+  { name: "Alex", file: "Alex_head_512.png",
+    buff: { icon: "🐐", title: "Bergziege", stat: "snowGrip",
+            lv: [1.04, 1.08, 1.12, 1.16, 1.19],
+            text: v => up(v) + " Grip im Schnee" },
+    ult: { key: "krallen", icon: "🧗", title: "Krallen",
+           text: "Rollt an steilen Hängen nicht mehr zurück." } },
+
+  { name: "Domi", file: "Domi_head_512.png",
+    buff: { icon: "⚡", title: "Turbo", stat: "acc",
+            lv: [1.04, 1.08, 1.11, 1.15, 1.18],
+            text: v => up(v) + " Motorleistung" },
+    ult: { key: "kickstart", icon: "🔌", title: "Kickstart",
+           text: "Die Boost-Leiste lädt doppelt so schnell nach." } },
+
+  { name: "Jan", file: "Jan.png",
+    buff: { icon: "⛽", title: "Sparfuchs", stat: "fuel",
+            lv: [0.94, 0.88, 0.81, 0.75, 0.68],
+            text: v => dn(v) + " Spritverbrauch" },
+    ult: { key: "kanisterjaeger", icon: "🛢", title: "Kanisterjäger",
+           text: "Jeder Kanister gibt die Hälfte mehr Sprit." } },
+
+  { name: "Maxi", file: "Maxi_head_512.png",
+    buff: { icon: "🌀", title: "Luftakrobat", stat: "torqueAir",
+            lv: [1.12, 1.23, 1.34, 1.45, 1.55],
+            text: v => up(v) + " Drehmoment in der Luft" },
+    ult: { key: "stuntfahrer", icon: "🎪", title: "Stuntfahrer",
+           text: "Doppelte Punkte für jeden Flip." } },
+
+  { name: "Nilo", file: "Nilo.png",
+    buff: { icon: "💨", title: "Rückenwind", stat: "maxSpd",
+            lv: [1.05, 1.09, 1.13, 1.18, 1.22],
+            text: v => up(v) + " Höchstgeschwindigkeit" },
+    ult: { key: "zweiterAtem", icon: "🌬", title: "Zweiter Atem",
+           text: "Der Boost hält halb so lange durch – also 50 % länger." } },
+
+  { name: "Phuc-Le", file: "Phuc-Le.png",
+    buff: { icon: "🍀", title: "Glückspilz", stat: "score",
+            lv: [1.02, 1.04, 1.06, 1.08, 1.10],
+            text: v => up(v) + " Punkte" },
+    ult: { key: "schutzengel", icon: "🛡", title: "Schutzengel",
+           text: "Übersteht einen Sturz pro Runde und fährt weiter." } },
+];
+
+const UNLOCK_COST = 10;
+let charIdx = 0;                 // wer gefahren wird (immer freigeschaltet)
+let viewIdx = 0;                 // wessen Karte gerade angezeigt wird
+let coins = 0;
+let levels = CHARS.map(() => 1);
+let unlocked = CHARS.map((c, i) => i === 0);     // Alex ist von Anfang an dabei
+try {
+  coins = Math.max(0, parseInt(localStorage.getItem("hcb.coins") || "0", 10) || 0);
+  const raw = JSON.parse(localStorage.getItem("hcb.levels") || "[]");
+  if (Array.isArray(raw)) {
+    raw.forEach((v, i) => {
+      if (i < levels.length) levels[i] = Math.min(MAXLV, Math.max(1, parseInt(v, 10) || 1));
+    });
+  }
+  const un = JSON.parse(localStorage.getItem("hcb.unlocked") || "[]");
+  if (Array.isArray(un)) un.forEach((v, i) => { if (i > 0 && i < unlocked.length) unlocked[i] = !!v; });
+  const s = localStorage.getItem("hcb.char");
+  if (s !== null) {
+    const i = Math.min(CHARS.length - 1, Math.max(0, parseInt(s, 10) || 0));
+    if (unlocked[i]) charIdx = i;
+  }
+} catch (e) {}
+viewIdx = charIdx;
+
+function saveProgress() {
+  try {
+    localStorage.setItem("hcb.coins", String(coins));
+    localStorage.setItem("hcb.levels", JSON.stringify(levels));
+    localStorage.setItem("hcb.unlocked", JSON.stringify(unlocked));
+    localStorage.setItem("hcb.char", String(charIdx));
+  } catch (e) {}
+}
+
+// Aktive Boni der gewählten Figur (1 = neutral), wird in reset() gesetzt.
+const MOD = { acc: 1, snowGrip: 1, fuel: 1, torqueAir: 1, flip: 1, maxSpd: 1, score: 1,
+              lives: 0, ult: "" };
+function applyBuffs() {
+  MOD.acc = MOD.snowGrip = MOD.fuel = MOD.torqueAir = MOD.flip = MOD.maxSpd = MOD.score = 1;
+  MOD.lives = 0; MOD.ult = "";
+  const c = CHARS[charIdx];
+  if (!c) return;
+  const lv = levels[charIdx];
+  MOD[c.buff.stat] = c.buff.lv[lv - 1];
+  if (lv >= MAXLV) {
+    MOD.ult = c.ult.key;
+    if (MOD.ult === "stuntfahrer") MOD.flip = 2;
+    if (MOD.ult === "schutzengel") MOD.lives = 1;
+  }
+  G.lives = MOD.lives;
+}
+
+// Quadratischer Ausschnitt ums Gesicht – funktioniert für freigestellte
+// Köpfe (512²) wie für Hochkant-Fotos.
+function faceCrop(img) {
+  const w = img.naturalWidth, h = img.naturalHeight;
+  const s = Math.min(w, h) * 0.82;
+  const cy = Math.min(h - s / 2, Math.max(s / 2, h * 0.44));
+  return { s, x: w / 2 - s / 2, y: cy - s / 2 };
+}
+
+function paintAvatar(c) {
+  if (!c.el || !c.ok) return;
+  const pic = c.el.querySelector(".pic");
+  const cr = faceCrop(c.img), k = (pic.clientWidth || 50) / cr.s;
+  pic.textContent = "";
+  pic.style.backgroundImage = 'url("' + CHAR_DIR + encodeURIComponent(c.file) + '")';
+  pic.style.backgroundSize = (c.img.naturalWidth * k) + "px " + (c.img.naturalHeight * k) + "px";
+  pic.style.backgroundPosition = (-cr.x * k) + "px " + (-cr.y * k) + "px";
+}
+
+function selectChar(i) {
+  viewIdx = i;
+  if (unlocked[i]) {                 // Gesperrte kann man nur ansehen, nicht fahren
+    charIdx = i;
+    try { localStorage.setItem("hcb.char", String(i)); } catch (e) {}
+    applyBuffs();
+  }
+  CHARS.forEach((c, k) => {
+    if (!c.el) return;
+    c.el.classList.toggle("sel", k === charIdx);
+    c.el.classList.toggle("view", k === viewIdx && k !== charIdx);
+    c.el.classList.toggle("locked", !unlocked[k]);
+  });
+  renderCard();
+}
+
+function el2(tag, cls, txt) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (txt != null) e.textContent = txt;
+  return e;
+}
+
+// Karte des gewählten Fahrers: Bonus, Level-Leiste, Upgrade, Max-Fähigkeit
+function renderCard() {
+  const box = document.getElementById("buff");
+  if (!box) return;
+  const i = viewIdx, c = CHARS[i], lv = levels[i], b = c.buff, frei = unlocked[i];
+  const cnt = document.getElementById("coinCount");
+  if (cnt) cnt.textContent = coins;
+
+  box.innerHTML = "";
+  box.classList.toggle("locked", !frei);
+
+  const top = el2("div", "bTop");
+  top.append(el2("b", null, b.icon + " " + b.title),
+             el2("span", "bLv", frei ? "Level " + lv + " / " + MAXLV : "🔒 " + c.name + " gesperrt"));
+  box.append(top);
+
+  const pips = el2("div", "pips");
+  for (let k = 0; k < MAXLV; k++) pips.append(el2("div", "pip" + (frei && k < lv ? " on" : "")));
+  box.append(pips);
+
+  box.append(el2("div", "bDesc", frei
+    ? b.text(b.lv[lv - 1]) + (lv < MAXLV ? "  →  " + b.text(b.lv[lv]) + " auf Level " + (lv + 1) : "")
+    : "Startet mit " + b.text(b.lv[0]) + ", ausbaubar bis " + b.text(b.lv[MAXLV - 1]) + "."));
+
+  const btn = el2("button", null);
+  btn.id = "upBtn";
+  if (!frei) {
+    btn.textContent = "Freischalten · " + UNLOCK_COST + " 🪙";
+    btn.disabled = coins < UNLOCK_COST;
+    btn.addEventListener("click", ev => {
+      ev.stopPropagation();
+      if (coins < UNLOCK_COST || unlocked[i]) return;
+      coins -= UNLOCK_COST;
+      unlocked[i] = true;
+      saveProgress();
+      selectChar(i);                 // gleich übernehmen
+    });
+  } else if (lv >= MAXLV) {
+    btn.textContent = "Voll ausgebaut";
+    btn.disabled = true;
+  } else {
+    const cost = LV_COST[lv - 1];
+    btn.textContent = "Upgrade · " + cost + " 🪙";
+    btn.disabled = coins < cost;
+    btn.addEventListener("click", ev => {
+      ev.stopPropagation();
+      if (coins < cost || levels[i] >= MAXLV) return;
+      coins -= cost;
+      levels[i]++;
+      saveProgress();
+      applyBuffs();
+      renderCard();
+    });
+  }
+  box.append(btn);
+
+  const u = c.ult;
+  const ult = el2("div", "bUlt" + (frei && lv >= MAXLV ? " on" : ""));
+  ult.append(el2("b", null, u.icon + " " + u.title),
+             el2("span", null, " — " + u.text +
+                 (frei && lv >= MAXLV ? "" : "  (ab Level " + MAXLV + ")")));
+  box.append(ult);
+}
+
+(function buildChars() {
+  const box = document.getElementById("chars");
+  CHARS.forEach((c, i) => {
+    const d = document.createElement("div");
+    d.className = "char";
+    const pic = document.createElement("div");
+    pic.className = "pic";
+    pic.textContent = c.name[0];            // Fallback, bis das Bild da ist
+    const nm = document.createElement("div");
+    nm.className = "nm";
+    nm.textContent = c.name;
+    const lock = document.createElement("div");
+    lock.className = "lock";
+    lock.textContent = "🔒";
+    d.append(pic, nm, lock);
+    d.addEventListener("click", () => selectChar(i));
+    box.appendChild(d);
+    c.el = d;
+
+    const im = new Image();
+    im.onload = () => { c.ok = im.naturalWidth > 0; paintAvatar(c); };
+    im.onerror = () => { c.ok = false; };    // fehlt die Datei -> gelber Helm
+    im.src = CHAR_DIR + encodeURIComponent(c.file);
+    c.img = im;
+  });
+  // Avatargröße hängt an der Media-Query -> nach Größenänderung neu zuschneiden
+  addEventListener("resize", () => CHARS.forEach(paintAvatar));
+  selectChar(charIdx);
+})();
+
+/* =========================================================================
+   RENDERING
+   ========================================================================= */
+const STARS = Array.from({ length: 160 }, (_, i) => ({
+  x: hash(i * 1.7) * 2600, y: hash(i * 5.3 + 9) * 1400, s: 0.6 + hash(i * 2.9) * 1.4,
+}));
+
+function mix(a, b, t) {
+  return "rgb(" + Math.round(a[0] + (b[0] - a[0]) * t) + "," +
+                  Math.round(a[1] + (b[1] - a[1]) * t) + "," +
+                  Math.round(a[2] + (b[2] - a[2]) * t) + ")";
+}
+const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t,
+                            a[1] + (b[1] - a[1]) * t,
+                            a[2] + (b[2] - a[2]) * t];
+const rgba = (c, a) => "rgba(" + (c[0] | 0) + "," + (c[1] | 0) + "," + (c[2] | 0) + "," + a + ")";
+
+/* ---- Höhenzonen ---------------------------------------------------------
+   Der Boden bekommt seine Farbe aus der Welthöhe, nicht aus der Entfernung:
+   Fels -> Schnee -> Gletschereis. heightGrad() rechnet eine Liste von
+   [Welthöhe, Farbe] in einen Bildschirm-Verlauf um, damit die Grenzen beim
+   Scrollen an derselben Höhe bleiben.                                     */
+function heightGrad(stops) {
+  const yTop = stops[stops.length - 1][0], yBot = stops[0][0];
+  const g = ctx.createLinearGradient(0, sy(yTop), 0, sy(yBot));
+  for (const [y, c] of stops) g.addColorStop((yTop - y) / (yTop - yBot), c);
+  return g;
+}
+const _SL = CFG.SNOWLINE, _IL = CFG.ICELINE, _VL = CFG.LAVALINE, _WL = CFG.SPACELINE;
+const RAMP_BODY = [
+  [_SL - CFG.SNOW_FADE, "#5d4a3a"],        // Fels
+  [_SL - 120,           "#a9b3c2"],        // Übergang
+  [_SL + 600,           "#f2f6fb"],        // Schnee
+  [_IL - 700,           "#eaf5fc"],        // Firn
+  [_IL + 2200,          "#8ecbe6"],        // Gletschereis
+  [_VL - 400,           "#6f93a8"],        // Eis wird schmutzig
+  [_VL + 2200,          "#3b2f33"],        // Vulkangestein
+  [_WL - 400,           "#312a33"],
+  [_WL + 2400,          "#2a2f45"],        // kalter Sternenfels
+];
+const RAMP_EDGE = [
+  [_SL - CFG.SNOW_FADE, "#5aa84f"],        // Gras
+  [_SL - 120,           "#dfe7ee"],
+  [_SL + 600,           "#ffffff"],
+  [_IL - 700,           "#ffffff"],
+  [_IL + 2200,          "#c6f1ff"],        // Eiskante
+  [_VL - 400,           "#9fb6bd"],
+  [_VL + 2200,          "#e0642a"],        // glühende Bruchkante
+  [_WL - 400,           "#8a6a70"],
+  [_WL + 2400,          "#cdd8ee"],        // Frostrand im Sternenlicht
+];
+// Auflage unter der Kante: lässt Schnee und Eis dick aussehen, auf Fels nichts
+const RAMP_DECK = [
+  [_SL - CFG.SNOW_FADE, "rgba(48,36,26,.5)"],   // Erdschicht unter dem Gras
+  [_SL - 200,           "rgba(120,124,134,.2)"],
+  [_SL + 900,           "rgba(255,255,255,.4)"],// Schneedecke
+  [_IL + 2200,          "rgba(206,244,255,.5)"],// Eisdecke
+  [_VL - 400,           "rgba(150,170,180,.3)"],
+  [_VL + 2200,          "rgba(120,52,30,.45)"], // verbackene Kruste
+  [_WL + 2400,          "rgba(180,196,224,.3)"],// Staubschicht
+];
+
+/* Anteil eines Gebiets an dieser Welthöhe (0 = noch nicht, 1 = voll da). Die
+   Gebiete überlagern sich nicht: jedes blendet aus, sobald das nächste kommt,
+   sonst läge z. B. das Polarlicht noch über dem Vulkan. */
+const bandAt = (y, von) => smooth((y - von) / CFG.ZONE_FADE);
+const iceAt   = y => bandAt(y, CFG.ICELINE)  * (1 - bandAt(y, CFG.LAVALINE));
+const lavaAt  = y => bandAt(y, CFG.LAVALINE) * (1 - bandAt(y, CFG.SPACELINE));
+const spaceAt = y => bandAt(y, CFG.SPACELINE);
+
+/* ---- Hintergrund-Deko: Wolken, Wald, Häuser -----------------------------
+   Reine Optik in eigenen Parallax-Ebenen, ohne jeden Einfluss aufs Fahren.
+   Jede Position kommt aus hash() – es wird nichts gespeichert, deshalb sieht
+   eine Stelle beim Zurückfahren wieder genauso aus wie vorher.           */
+const CLOUD_W = 7500;                      // Wiederholbreite des Wolkenbands
+const CLOUDS = Array.from({ length: 20 }, (_, i) => {
+  const n = 4 + Math.floor(hash(i * 12.9 + 6) * 3);
+  const blobs = Array.from({ length: n }, (_, k) => {
+    const t = n > 1 ? k / (n - 1) : 0.5;
+    return { ox: (t - 0.5) * 128,
+             oy: -Math.sin(Math.PI * t) * 15 * (0.6 + hash(i * 3.3 + k * 1.9) * 0.8),
+             r: 20 + hash(i * 7.1 + k * 2.7) * 15 };
+  });
+  return {
+    x: hash(i * 2.3 + 1) * CLOUD_W,
+    f: hash(i * 6.1 + 4),                   // Platz im Himmelsstreifen (0 unten, 1 oben)
+    s: 0.7 + hash(i * 9.7 + 8) * 0.85,
+    v: 4 + hash(i * 4.3 + 2) * 10,          // Eigendrift in px/s
+    w: Math.max(...blobs.map(b => Math.abs(b.ox) + b.r)),
+    blobs,
+  };
+});
+
+function drawClouds(alt) {
+  const par = 0.09, now = performance.now() / 1000;
+  const grau = Math.min(1, WEA.p);          // bei Wetter werden sie grau
+  const lava = lavaAt(cam.y), raum = spaceAt(cam.y);
+  let col = lerp3(lerp3([255, 255, 255], [148, 156, 176], grau), [58, 64, 94], alt);
+  col = lerp3(col, [64, 46, 44], lava);                // über dem Vulkan Rauch
+  const schatten = lerp3(col, [96, 116, 150], 0.42);   // Unterseite
+  // In der Sternenzone ist die Luft weg – dort gibt es keine Wolken mehr.
+  const a = (0.52 + 0.3 * grau - 0.14 * alt) * (1 - raum);
+  if (a <= 0.02) return;
+  // Höhe des Streifens aus dem Bild ableiten, nicht fest in Weltpixeln: sonst
+  // liegt er bei anderer Fenstergröße neben dem sichtbaren Himmel.
+  const band = (H * CAMY * 0.88) / SCALE + 110;
+  for (const c of CLOUDS) {
+    // waagrecht durchs Band wandern, senkrecht mit der Kamera durchrollen:
+    // so ist auf jeder Höhe Bewölkung da, ohne pro Wolke Zustand zu halten
+    const dx = ((c.x + now * c.v - cam.x * par) % CLOUD_W + CLOUD_W) % CLOUD_W - CLOUD_W * 0.5;
+    const px = W * CAMX + dx * SCALE;
+    const s = SCALE * c.s;
+    if (px < -c.w * s - 20 || px > W + c.w * s + 20) continue;
+    const dy = ((c.f * band - cam.y * par) % band + band) % band;
+    const py = H * CAMY * 0.88 - dy * SCALE;
+    const ballen = () => {
+      ctx.beginPath();
+      for (const b of c.blobs) {
+        ctx.moveTo(px + (b.ox + b.r) * s, py + b.oy * s);
+        ctx.arc(px + b.ox * s, py + b.oy * s, b.r * s, 0, 7);
+      }
+    };
+    ballen();
+    ctx.rect(px - c.w * s * 0.86, py - 3 * s, c.w * s * 1.72, 11 * s);   // flache Unterkante
+    ctx.fillStyle = rgba(schatten, a); ctx.fill();
+    // dieselben Ballen ein Stück höher und heller: gibt Volumen statt Fläche
+    ctx.save();
+    ctx.translate(0, -3.5 * s);
+    ballen();
+    ctx.fillStyle = rgba(col, a); ctx.fill();
+    ctx.restore();
+  }
+}
+
+/* Vogelschwärme über dem Tal. Sie ziehen langsam durchs Bild und schlagen mit
+   den Flügeln; oberhalb der Schneegrenze sind sie weg. */
+const SCHWARM = Array.from({ length: 7 }, (_, i) => ({
+  x: hash(i * 5.9 + 3) * 4500,
+  y: 250 + hash(i * 3.1 + 8) * 300,       // Welthöhe, nicht Bildschirmhöhe
+  v: 26 + hash(i * 7.7) * 22,
+  n: 3 + Math.floor(hash(i * 2.3) * 4),
+  s: 0.7 + hash(i * 8.1) * 0.6,
+}));
+function drawVoegel() {
+  const tal = 1 - smooth((cam.y - 1500) / 2400);
+  if (tal < 0.04) return;
+  const t = performance.now() / 1000;
+  ctx.strokeStyle = rgba([44, 52, 74], 0.68 * tal);
+  ctx.lineCap = "round";
+  for (const f of SCHWARM) {
+    // Hohe Parallaxe in beide Richtungen: die Vögel hängen in der Welt, nicht
+    // am Bildschirm. Ohne Kameraanteil klebten sie im Bild fest und wanderten
+    // damit scheinbar mit dem Fahrer mit – auch nach oben.
+    const dx = ((f.x + t * f.v - cam.x * 0.8) % 4500 + 4500) % 4500 - 2250;
+    const px = W * CAMX + dx * SCALE;
+    // Senkrecht mit weniger Parallaxe als waagerecht: die Schwärme sinken beim
+    // Klettern weg, aber langsam genug, um das ganze Tal über sichtbar zu sein.
+    const py = H * CAMY - (f.y - cam.y * 0.45) * SCALE;
+    if (py < -60 || py > H + 60) continue;
+    if (px < -80 || px > W + 80) continue;
+    const s = f.s * Math.max(1, SCALE) * 1.6;
+    ctx.lineWidth = 1.7 * s;
+    ctx.beginPath();
+    for (let k = 0; k < f.n; k++) {
+      const bx = px + (k - f.n / 2) * 19 * s, by = py + Math.sin(k * 2.1) * 10 * s;
+      const fl = Math.sin(t * 6 + k * 1.3) * 3.2 * s;   // Flügelschlag
+      ctx.moveTo(bx - 7 * s, by - fl);
+      ctx.quadraticCurveTo(bx - 2.4 * s, by + 1.8 * s, bx, by);
+      ctx.quadraticCurveTo(bx + 2.4 * s, by + 1.8 * s, bx + 7 * s, by - fl);
+    }
+    ctx.stroke();
+  }
+}
+
+/* Kirche im Hintergrunddorf – alle 5200 px eine, damit im Tal immer wieder
+   eine auftaucht. Sie steht auf demselben Kamm wie die Häuser. */
+function drawKirche(par, amp, base, alt) {
+  const tal = 1 - smooth((cam.y - 1800) / 2600);
+  if (tal < 0.04) return;
+  const wx0 = cam.x * par + (-80 - W * CAMX) / SCALE;
+  const wx1 = cam.x * par + (W + 80 - W * CAMX) / SCALE;
+  const wand = rgba(lerp3([214, 214, 208], [30, 34, 58], alt), tal);
+  const dach = rgba(lerp3([92, 76, 78], [20, 22, 44], alt), tal);
+  for (let k = Math.floor(wx0 / 5200); k <= Math.ceil(wx1 / 5200); k++) {
+    const wx = k * 5200 + 1400;
+    if (wx < wx0 - 60 || wx > wx1 + 60) continue;
+    const px = W * CAMX + (wx - cam.x * par) * SCALE;
+    const py = H * CAMY - (ridgeY(wx, amp, base) - cam.y * par) * SCALE;
+    if (py > H + 30) continue;
+    const s = SCALE * 1.15;
+    ctx.fillStyle = wand;
+    ctx.fillRect(px - 15 * s, py - 15 * s, 30 * s, 17 * s);      // Schiff
+    ctx.fillRect(px + 5 * s, py - 34 * s, 11 * s, 36 * s);       // Turm
+    ctx.fillStyle = dach;
+    ctx.beginPath();                                             // Turmspitze
+    ctx.moveTo(px + 3 * s, py - 34 * s);
+    ctx.lineTo(px + 10.5 * s, py - 50 * s);
+    ctx.lineTo(px + 18 * s, py - 34 * s);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();                                             // Satteldach
+    ctx.moveTo(px - 18 * s, py - 15 * s);
+    ctx.lineTo(px - 4 * s, py - 24 * s);
+    ctx.lineTo(px + 10 * s, py - 15 * s);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = dach; ctx.lineWidth = 1.4 * s;             // Kreuz
+    ctx.beginPath();
+    ctx.moveTo(px + 10.5 * s, py - 50 * s); ctx.lineTo(px + 10.5 * s, py - 57 * s);
+    ctx.moveTo(px + 7.5 * s, py - 54 * s); ctx.lineTo(px + 13.5 * s, py - 54 * s);
+    ctx.stroke();
+  }
+}
+
+// Silhouette einer Bergkette – Grundlage für Kamm und Bewuchs
+function ridgeY(wx, amp, base) {
+  return base + Math.sin(wx * 0.0009) * amp + Math.sin(wx * 0.0031 + 2.1) * amp * 0.35
+              + (vnoise(wx * 0.0007 + 5) - 0.5) * amp * 1.2;
+}
+
+// Wald und Häuser stehen auf dem Kamm. Das Raster ist in Weltkoordinaten fest
+// verankert, damit beim Fahren nichts wandert oder neu auslost.
+function drawProps(alt, par, amp, base, o) {
+  const wx0 = cam.x * par + (-40 - W * CAMX) / SCALE;
+  const wx1 = cam.x * par + (W + 40 - W * CAMX) / SCALE;
+  const baum = rgba(lerp3(o.baum, [16, 20, 44], alt), 1);
+  // zweiter, hellerer Grünton: der Wald wirkt sonst wie ausgestanzt
+  const baum2 = rgba(lerp3(lerp3(o.baum, [255, 255, 255], 0.16), [16, 20, 44], alt), 1);
+  const wand = o.wand && rgba(lerp3(o.wand, [30, 34, 58], alt), 1);
+  const dach = o.dach && rgba(lerp3(o.dach, [20, 22, 44], alt), 1);
+  const licht = Math.min(0.85, Math.max(0, alt - 0.16) * 2.4);
+  for (let k = Math.floor(wx0 / o.step); k <= Math.ceil(wx1 / o.step); k++) {
+    if (hash(k * 1.37 + o.seed) > o.dens) continue;
+    const wx = (k + hash(k * 2.11 + o.seed) * 0.8 - 0.4) * o.step;
+    const px = W * CAMX + (wx - cam.x * par) * SCALE;
+    const py = H * CAMY - (ridgeY(wx, amp, base) - cam.y * par) * SCALE;
+    if (py > H + 30) continue;              // Kette liegt unter dem Bild
+    const r1 = hash(k * 5.9 + o.seed), r2 = hash(k * 3.7 + o.seed);
+    // Häuser nur auf halbwegs flachem Kamm – am Steilhang baut niemand
+    const flach = Math.abs((ridgeY(wx + 8, amp, base) - ridgeY(wx - 8, amp, base)) / 16) < 0.3;
+    if (wand && flach && r1 < 0.34) {
+      const s = SCALE * (o.hsz || o.sz) * (0.85 + r2 * 0.3);
+      const bw = 21 * s, bh = 14 * s, bx = px - bw / 2, by = py + 2 * s - bh;
+      ctx.fillStyle = wand; ctx.fillRect(bx, by, bw, bh);
+      // Öffnungen: bei größeren Häusern zwei Fenster und eine Tür. Sie werden
+      // immer gezeichnet – tagsüber dunkel, abends leuchten sie.
+      const oeff = bw > 26
+        ? [[0.14, 0.2, 0.22, 0.3], [0.64, 0.2, 0.22, 0.3], [0.41, 0.56, 0.18, 0.44]]
+        : [[0.38, 0.28, 0.24, 0.3]];
+      const malen = col => {
+        ctx.fillStyle = col;
+        for (const [fx, fy, fw, fh] of oeff)
+          ctx.fillRect(bx + bw * fx, by + bh * fy, bw * fw, bh * fh);
+      };
+      malen("rgba(38,42,56,.5)");
+      if (licht > 0.02) malen(rgba([255, 216, 138], licht));
+      ctx.fillStyle = dach;
+      ctx.beginPath();
+      ctx.moveTo(bx - 3 * s, by);
+      ctx.lineTo(px, by - 9 * s);
+      ctx.lineTo(bx + bw + 3 * s, by);
+      ctx.closePath(); ctx.fill();
+      if (r2 > 0.5) ctx.fillRect(bx + bw * 0.7, by - 8 * s, 3 * s, 6 * s);   // Kamin
+      continue;
+    }
+    const s = SCALE * o.sz * (0.7 + r2 * 0.6);
+    ctx.fillStyle = r2 > 0.55 ? baum2 : baum;
+    if (o.laub && r1 > 0.78) {              // ein paar Laubbäume dazwischen
+      ctx.fillRect(px - 1.2 * s, py - 9 * s, 2.4 * s, 11 * s);
+      ctx.beginPath();                      // zwei Kugeln – weniger Lolli, mehr Krone
+      ctx.arc(px - 2.5 * s, py - 12 * s, 5.5 * s, 0, 7);
+      ctx.moveTo(px + 8 * s, py - 15 * s);
+      ctx.arc(px + 2.5 * s, py - 15 * s, 5.5 * s, 0, 7);
+      ctx.fill();
+      continue;
+    }
+    const th = 28, hw = 8.5;                // zweistöckige Tanne
+    ctx.beginPath();
+    ctx.moveTo(px, py - th * s);
+    ctx.lineTo(px + hw * 0.55 * s, py - th * 0.44 * s);
+    ctx.lineTo(px + hw * 0.34 * s, py - th * 0.44 * s);
+    ctx.lineTo(px + hw * s, py + 2 * s);
+    ctx.lineTo(px - hw * s, py + 2 * s);
+    ctx.lineTo(px - hw * 0.34 * s, py - th * 0.44 * s);
+    ctx.lineTo(px - hw * 0.55 * s, py - th * 0.44 * s);
+    ctx.closePath(); ctx.fill();
+  }
+}
+
+function drawSky(alt) {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, mix([96, 168, 232], [6, 8, 26], alt));
+  g.addColorStop(0.55, mix([176, 214, 240], [22, 28, 64], alt));
+  g.addColorStop(1, mix([232, 232, 226], [46, 44, 78], alt));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  const lava = lavaAt(cam.y), raum = spaceAt(cam.y);
+  // In der Sternenzone ist die Luft praktisch weg: der Himmel wird schwarz und
+  // die Sterne stehen hart darin.
+  if (raum > 0.01) {
+    ctx.fillStyle = rgba([3, 4, 12], 0.88 * raum);
+    ctx.fillRect(0, 0, W, H);
+  }
+  // Über dem Vulkan glüht der Himmel von unten
+  if (lava > 0.01) {
+    const lg = ctx.createLinearGradient(0, H * 0.32, 0, H);
+    lg.addColorStop(0, rgba([255, 96, 30], 0));
+    lg.addColorStop(1, rgba([255, 104, 34], 0.3 * lava));
+    ctx.fillStyle = lg; ctx.fillRect(0, H * 0.32, W, H * 0.68);
+  }
+
+  if (alt > 0.12) {
+    ctx.globalAlpha = Math.min(1, (alt - 0.12) * 1.6) * (1 + raum * 0.8);
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();                      // alle Sterne in einem Pfad statt 160 Befehlen
+    for (const s of STARS) {
+      const px = ((s.x - cam.x * 0.06) % 2600 + 2600) % 2600 * (W / 2600);
+      const py = (s.y - cam.y * 0.05) % 1400;
+      const yy = ((py % 1400) + 1400) % 1400 * (H / 1400) * 0.7;
+      ctx.rect(px, yy, s.s, s.s);
+    }
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // Sonne und Mond wechseln sich mit der Höhe ab, beide verschwinden im Wetter
+  const klar = 1 - WEA.p * 0.85;
+  const nacht = smooth((alt - 0.34) / 0.34);
+  if (klar > 0.02 && nacht < 0.99) {
+    const sunX = W * 0.78, sunY = H * 0.16;
+    const sg = ctx.createRadialGradient(sunX, sunY, 4, sunX, sunY, 120);
+    sg.addColorStop(0, "rgba(255,246,214," + (0.95 * klar * (1 - nacht)) + ")");
+    sg.addColorStop(1, "rgba(255,240,190,0)");
+    ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(sunX, sunY, 120, 0, 7); ctx.fill();
+  }
+  if (klar > 0.02 && nacht > 0.01) {
+    const mx = W * 0.19, my = H * 0.19, r = 26 * Math.max(0.8, SCALE);
+    const a = klar * nacht;
+    const mg = ctx.createRadialGradient(mx, my, r * 0.7, mx, my, r * 4.2);
+    mg.addColorStop(0, "rgba(214,228,255," + (0.3 * a) + ")");
+    mg.addColorStop(1, "rgba(190,210,255,0)");
+    ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(mx, my, r * 4.2, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(238,244,255," + (0.94 * a) + ")";
+    ctx.beginPath(); ctx.arc(mx, my, r, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(196,208,232," + (0.5 * a) + ")";   // ein paar Krater
+    ctx.beginPath(); ctx.arc(mx - r * 0.3, my - r * 0.25, r * 0.22, 0, 7);
+    ctx.moveTo(mx + r * 0.5, my + r * 0.1);
+    ctx.arc(mx + r * 0.28, my + r * 0.1, r * 0.15, 0, 7);
+    ctx.moveTo(mx + r * 0.2, my + r * 0.55);
+    ctx.arc(mx - r * 0.05, my + r * 0.45, r * 0.12, 0, 7);
+    ctx.fill();
+  }
+
+  drawAurora(alt);
+  drawMeteors(raum * klar);
+}
+
+/* ---- Tiefer Himmel: Galaxien, Schwarze Löcher, helle Einzelsterne --------
+   Gehört zur Sternenzone und blendet mit ihr ein. Liegt hinter den Bergen,
+   zieht mit sehr wenig Parallaxe mit und wiederholt sich in einem Band.  */
+const DEEP_W = 9000;
+const DEEP = Array.from({ length: 7 }, (_, i) => ({
+  x: hash(i * 3.7 + 11) * DEEP_W,
+  f: 0.06 + hash(i * 9.1 + 3) * 0.5,        // Höhe im Bild (0 = oben)
+  s: 0.65 + hash(i * 5.3 + 2) * 0.85,
+  rot: hash(i * 2.9 + 7) * Math.PI,
+  loch: i % 3 === 1,
+  ton: hash(i * 6.7 + 4),
+}));
+const HELLE = Array.from({ length: 14 }, (_, i) => ({
+  x: hash(i * 4.3 + 21) * DEEP_W,
+  f: 0.04 + hash(i * 7.9 + 6) * 0.62,
+  s: 0.7 + hash(i * 2.1 + 8) * 1.1,
+  ph: hash(i * 8.3) * 6.28,
+}));
+
+function drawDeepSky() {
+  const raum = spaceAt(cam.y);
+  if (raum < 0.03) return;
+  const par = 0.05, t = performance.now() / 1000;
+  const bandX = e => {
+    const dx = ((e.x - cam.x * par) % DEEP_W + DEEP_W) % DEEP_W - DEEP_W * 0.5;
+    return W * CAMX + dx * SCALE;
+  };
+  for (const d of DEEP) {
+    const px = bandX(d), py = H * d.f, s = d.s * Math.max(0.7, SCALE);
+    if (px < -220 || px > W + 220) continue;
+    if (d.loch) {
+      const R = 24 * s;
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.globalCompositeOperation = "lighter";
+      const gl = ctx.createRadialGradient(0, 0, R, 0, 0, R * 2.1);
+      gl.addColorStop(0, rgba([255, 172, 96], 0.3 * raum));
+      gl.addColorStop(1, rgba([255, 140, 70], 0));
+      ctx.fillStyle = gl;
+      ctx.beginPath(); ctx.arc(0, 0, R * 2.1, 0, 7); ctx.fill();
+      ctx.rotate(d.rot * 0.3);
+      ctx.scale(1, 0.26);                      // Scheibe fast von der Kante
+      ctx.strokeStyle = rgba([255, 236, 196], raum);
+      ctx.lineWidth = 2.6 * s;
+      ctx.beginPath(); ctx.arc(0, 0, R * 1.7, 0, 7); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = rgba([2, 2, 6], Math.min(1, 1.3 * raum));
+      ctx.beginPath(); ctx.arc(px, py, R, 0, 7); ctx.fill();
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = rgba([255, 246, 220], 0.75 * raum);   // Photonenring
+      ctx.lineWidth = 1.6 * s;
+      ctx.beginPath(); ctx.arc(px, py, R * 1.06, 0, 7); ctx.stroke();
+      ctx.translate(px, py); ctx.rotate(d.rot * 0.3); ctx.scale(1, 0.26);
+      ctx.strokeStyle = rgba([255, 240, 205], raum);          // vordere Hälfte
+      ctx.lineWidth = 2.6 * s;
+      ctx.beginPath(); ctx.arc(0, 0, R * 1.7, 0, Math.PI); ctx.stroke();
+      ctx.restore();
+    } else {
+      const R = 62 * s;
+      const kern = lerp3([255, 236, 208], [214, 206, 255], d.ton);
+      const rand = lerp3([120, 96, 220], [70, 140, 220], d.ton);
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(d.rot);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.scale(1, 0.42);                      // schräg stehende Scheibe
+      const g = ctx.createRadialGradient(0, 0, 2, 0, 0, R);
+      g.addColorStop(0, rgba(kern, 0.75 * raum));
+      g.addColorStop(0.22, rgba(rand, 0.32 * raum));
+      g.addColorStop(1, rgba(rand, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, R, 0, 7); ctx.fill();
+      ctx.strokeStyle = rgba(rand, 0.22 * raum);   // zwei Spiralarme
+      ctx.lineWidth = 6 * s;
+      for (let a = 0; a < 2; a++) {
+        ctx.beginPath();
+        for (let th = 0; th < Math.PI * 1.7; th += 0.22) {
+          const rr = 9 * s + th * R * 0.3, A = th + a * Math.PI;
+          const X = Math.cos(A) * rr, Y = Math.sin(A) * rr;
+          th ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+  // Helle Einzelsterne mit Kreuzstrahl, langsam pulsierend
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (const e of HELLE) {
+    const px = bandX(e), py = H * e.f;
+    if (px < -20 || px > W + 20) continue;
+    const s = e.s * Math.max(0.7, SCALE) * (0.75 + 0.25 * Math.sin(t * 1.4 + e.ph));
+    const a = 0.9 * raum;
+    ctx.fillStyle = rgba([255, 255, 255], a);
+    ctx.beginPath(); ctx.arc(px, py, 1.7 * s, 0, 7); ctx.fill();
+    ctx.strokeStyle = rgba([200, 224, 255], 0.5 * a);
+    ctx.lineWidth = 1.1 * s;
+    ctx.beginPath();
+    ctx.moveTo(px - 7 * s, py); ctx.lineTo(px + 7 * s, py);
+    ctx.moveTo(px, py - 7 * s); ctx.lineTo(px, py + 7 * s);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* ---- Weltraum-Finale ----------------------------------------------------
+   Nach dem Absprung kreisen Planeten und Monde um den Fahrer. Jede Bahn ist
+   eine geneigte Ellipse; wer gerade auf der hinteren Hälfte läuft, wird vor
+   dem Bike gezeichnet, der Rest dahinter – das gibt die Tiefe.          */
+const ORBIT = Array.from({ length: 7 }, (_, i) => ({
+  r: 130 + i * 48 + hash(i * 3.7 + 1) * 45,
+  v: (0.1 + hash(i * 5.1 + 2) * 0.14) * (hash(i * 9.3 + 3) > 0.5 ? 1 : -1),
+  ph: hash(i * 2.9 + 4) * 6.28,
+  flach: 0.3 + hash(i * 7.7 + 5) * 0.45,      // Neigung der Bahn
+  dreh: hash(i * 11.1 + 6) * 3.14,
+  gr: 8 + hash(i * 4.3 + 7) * 15,
+  ring: hash(i * 8.7 + 8) > 0.62,
+  ton: hash(i * 6.1 + 9),
+}));
+
+function drawWeltall(vorn) {
+  if (G.weltall === null) return;
+  const ein = smooth(G.weltall / 1.3);        // sanft einblenden
+  if (ein < 0.01) return;
+  const cx = sx(bikeX()), cy = sy((rear.y + front.y) / 2), t = G.weltall;
+  for (const o of ORBIT) {
+    const w = o.ph + t * o.v * 6.28;
+    const hinten = Math.sin(w) < 0;
+    if (hinten === vorn) continue;
+    const ox = Math.cos(w) * o.r * SCALE, oy = Math.sin(w) * o.r * o.flach * SCALE;
+    const cs = Math.cos(o.dreh), sn = Math.sin(o.dreh);
+    const X = cx + ox * cs - oy * sn, Y = cy + ox * sn + oy * cs;
+    const R = o.gr * SCALE * (hinten ? 0.8 : 1.15);   // hinten kleiner
+    const a = ein * (hinten ? 0.75 : 1);
+    if (!vorn) {                              // Bahnlinie nur einmal zeichnen
+      ctx.strokeStyle = rgba([150, 170, 220], 0.1 * ein);
+      ctx.lineWidth = 1 * SCALE;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, o.r * SCALE, o.r * o.flach * SCALE, o.dreh, 0, 7);
+      ctx.stroke();
+    }
+    const hell = lerp3([255, 214, 170], [170, 210, 255], o.ton);
+    const dunkel = lerp3([120, 70, 60], [40, 60, 120], o.ton);
+    if (o.ring) {                             // Ring hinter dem Planeten
+      ctx.save();
+      ctx.translate(X, Y); ctx.rotate(o.dreh + 0.4); ctx.scale(1, 0.3);
+      ctx.strokeStyle = rgba(hell, 0.45 * a); ctx.lineWidth = 2.4 * SCALE;
+      ctx.beginPath(); ctx.arc(0, 0, R * 1.9, Math.PI, 2 * Math.PI); ctx.stroke();
+      ctx.restore();
+    }
+    const g = ctx.createRadialGradient(X - R * 0.4, Y - R * 0.4, R * 0.1, X, Y, R);
+    g.addColorStop(0, rgba(hell, a));
+    g.addColorStop(1, rgba(dunkel, a));
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(X, Y, R, 0, 7); ctx.fill();
+    if (o.ring) {                             // vordere Ringhälfte
+      ctx.save();
+      ctx.translate(X, Y); ctx.rotate(o.dreh + 0.4); ctx.scale(1, 0.3);
+      ctx.strokeStyle = rgba(hell, 0.75 * a); ctx.lineWidth = 2.4 * SCALE;
+      ctx.beginPath(); ctx.arc(0, 0, R * 1.9, 0, Math.PI); ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+/* Sternschnuppen der Sternenzone. Vier Stück mit fester Periode, damit ohne
+   Zufallszahlen und ohne gespeicherten Zustand immer wieder eine kommt. */
+function drawMeteors(a) {
+  if (a < 0.03) return;
+  const t = performance.now() / 1000;
+  ctx.save();
+  ctx.lineCap = "round";
+  for (let i = 0; i < 4; i++) {
+    const p = ((t * 0.14 + i * 0.31) % 1);
+    if (p > 0.16) continue;                       // die meiste Zeit ist keine da
+    const f = p / 0.16;                           // 0..1 Flugfortschritt
+    const x0 = hash(i * 5.7 + Math.floor(t * 0.14 + i * 0.31) * 3.1) * W;
+    const y0 = hash(i * 9.3 + 2) * H * 0.5;
+    const L = (90 + hash(i * 3.9) * 70) * Math.max(0.7, SCALE);
+    const X = x0 + f * W * 0.35, Y = y0 + f * H * 0.22;
+    const gl = ctx.createLinearGradient(X, Y, X - L * 0.7, Y - L * 0.45);
+    const b = Math.sin(f * Math.PI) * a;
+    gl.addColorStop(0, "rgba(255,255,255," + (0.95 * b) + ")");
+    gl.addColorStop(1, "rgba(180,205,255,0)");
+    ctx.strokeStyle = gl; ctx.lineWidth = 2.2 * Math.max(0.7, SCALE);
+    ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X - L * 0.7, Y - L * 0.45); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* Polarlicht – gehört zur Eiszone und blendet mit ihr ein. Drei Bänder mit
+   unterschiedlichem Tempo, additiv gezeichnet, damit sie leuchten. */
+function drawAurora(alt) {
+  const eis = iceAt(cam.y);
+  const a = eis * (1 - WEA.p * 0.7);
+  if (a < 0.02) return;
+  const t = performance.now() / 1000;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+  for (let b = 0; b < 3; b++) {
+    const amp = 26 + b * 14, base = H * (0.16 + b * 0.09), spd = 0.10 + b * 0.045;
+    const g = ctx.createLinearGradient(0, 0, W, 0);
+    g.addColorStop(0,    "rgba(90,220,170,0)");
+    g.addColorStop(0.28, "rgba(96,236,176," + (0.3 * a) + ")");
+    g.addColorStop(0.6,  "rgba(126,206,255," + (0.24 * a) + ")");
+    g.addColorStop(0.85, "rgba(168,136,255," + (0.14 * a) + ")");
+    g.addColorStop(1,    "rgba(160,130,255,0)");
+    ctx.strokeStyle = g;
+    ctx.lineWidth = (30 + b * 16) * Math.max(0.7, SCALE);
+    ctx.beginPath();
+    for (let px = -20; px <= W + 20; px += 26) {
+      const y = base + Math.sin(px * 0.0042 + t * spd * 6 + b * 2.1) * amp
+                     + Math.sin(px * 0.0011 - t * spd * 3) * amp * 0.7;
+      px > -20 ? ctx.lineTo(px, y) : ctx.moveTo(px, y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawRidge(par, amp, base, color) {
+  ctx.beginPath();
+  ctx.moveTo(-10, H + 10);
+  for (let px = -10; px <= W + 10; px += 12) {
+    const wx = cam.x * par + (px - W * CAMX) / SCALE;
+    ctx.lineTo(px, H * CAMY - (ridgeY(wx, amp, base) - cam.y * par) * SCALE);
+  }
+  ctx.lineTo(W + 10, H + 10);
+  ctx.closePath();
+  ctx.fillStyle = color; ctx.fill();
+}
+
+/* Eisgrat am Horizont – der Hintergrund der Eiszone. Er hängt an der Bild-
+   mitte statt an einer Welthöhe: die grünen Ketten sind auf 500 m längst unter
+   den Bildrand gesunken, ein Horizont muss aber bleiben. */
+const tri = u => Math.abs((u - Math.floor(u)) * 2 - 1);
+function drawIcePeaks() {
+  const eis = iceAt(cam.y), lava = lavaAt(cam.y), raum = spaceAt(cam.y);
+  // Der Grat gehört zur Eiszone. Über die ganze Vulkanzone hinweg sinkt er
+  // langsam weg, und wenn die Sternenzone beginnt, ist er ganz fort – dort
+  // ist man über allem und der Himmel soll frei sein.
+  const weg = smooth((cam.y - CFG.LAVALINE) / (CFG.SPACELINE - CFG.LAVALINE));
+  const da = Math.min(1, eis + lava) * (1 - weg) * (1 - raum);
+  if (da < 0.02) return;
+  // Farbe des Grats nach Gebiet: beschneit, verbrannt, oder kalt im Sternenlicht
+  let oben = lerp3([214, 236, 250], [134, 74, 54], lava / Math.max(0.001, eis + lava + raum));
+  let mitte = lerp3([146, 184, 216], [64, 42, 46], lava / Math.max(0.001, eis + lava + raum));
+  oben = lerp3(oben, [148, 156, 192], raum);
+  mitte = lerp3(mitte, [54, 58, 84], raum);
+  const par = 0.15, hz = H * 0.56;
+  ctx.beginPath();
+  ctx.moveTo(-10, H + 10);
+  for (let px = -10; px <= W + 10; px += 9) {
+    const wx = cam.x * par + (px - W * CAMX) / SCALE;
+    const u = wx * 0.00055;
+    // Zacken statt Wellen: Dreieckswelle, Gipfelhöhe pro Zacke ausgelost
+    const hp = 80 + hash(Math.floor(u) * 3.1 + 5) * 130;
+    const h = (1 - tri(u)) * hp + (1 - tri(wx * 0.0018 + 0.3)) * 26
+            + (vnoise(wx * 0.0012 + 7) - 0.5) * 40;
+    ctx.lineTo(px, hz - h * SCALE);
+  }
+  ctx.lineTo(W + 10, H + 10);
+  ctx.closePath();
+  const g = ctx.createLinearGradient(0, hz - 210 * SCALE, 0, hz + 170 * SCALE);
+  g.addColorStop(0,    rgba(oben, 0.95 * da));     // Gipfel
+  g.addColorStop(0.4,  rgba(mitte, 0.72 * da));
+  g.addColorStop(1,    rgba([80, 108, 148], 0));   // unten in Dunst auslaufen
+  ctx.fillStyle = g; ctx.fill();
+}
+
+// Dunst über den fernen Ketten: nimmt ihnen Kontrast, das Spielgelände davor
+// bleibt scharf. Das ist der Trick, der Tiefe macht.
+function drawHaze(alt) {
+  // Dunst braucht Luft – in der Sternenzone gibt es keine mehr
+  const klar = 1 - spaceAt(cam.y);
+  if (klar < 0.02) return;
+  const c = lerp3([228, 240, 251], [40, 52, 92], alt);
+  const g = ctx.createLinearGradient(0, H * 0.3, 0, H * 0.95);
+  g.addColorStop(0, rgba(c, 0));
+  g.addColorStop(0.5, rgba(c, 0.24 * klar));
+  g.addColorStop(1, rgba(c, 0));
+  ctx.fillStyle = g; ctx.fillRect(0, H * 0.3, W, H * 0.65);
+}
+
+// Eiskristalle in der Luft – nur in der Eiszone, treiben langsam nach unten
+const DUST = Array.from({ length: 70 }, (_, i) => ({
+  x: hash(i * 4.1 + 2), y: hash(i * 8.3 + 5),
+  s: 0.7 + hash(i * 2.7) * 1.5, v: 0.011 + hash(i * 5.5) * 0.028,
+  d: hash(i * 9.1) * 6.28,
+}));
+function drawIceDust() {
+  const eis = iceAt(cam.y), lava = lavaAt(cam.y), raum = spaceAt(cam.y);
+  // Schneezone: zwischen Schneegrenze und Eis rieselt es leicht
+  const flocken = smooth((cam.y - CFG.SNOWLINE + 200) / 900) * (1 - eis - lava - raum);
+  if (eis + lava + raum + flocken < 0.04) return;
+  const t = performance.now() / 1000;
+  const wrap = v => ((v % 1) + 1) % 1;
+  if (flocken > 0.04) {                   // Flocken taumeln nach unten
+    ctx.fillStyle = rgba([246, 250, 255], 0.7 * flocken);
+    ctx.beginPath();
+    for (const p of DUST) {
+      const s = p.s * 1.2 * Math.max(1, SCALE);
+      ctx.rect(wrap(p.x + Math.sin(t * 0.7 + p.d) * 0.035) * W,
+               wrap(p.y + t * p.v * 0.75) * H, s, s);
+    }
+    ctx.fill();
+  }
+  if (eis > 0.04) {                       // Eiskristalle sinken
+    ctx.fillStyle = rgba([228, 248, 255], 0.55 * eis);
+    ctx.beginPath();                      // alle Kristalle in einem Pfad
+    for (const p of DUST) {
+      const s = p.s * Math.max(1, SCALE);
+      ctx.rect(wrap(p.x + Math.sin(t * 0.5 + p.d) * 0.02) * W, wrap(p.y + t * p.v) * H, s, s);
+    }
+    ctx.fill();
+  }
+  // Flackernde Partikel laufen in vier Helligkeitsstufen. Eine eigene Farbe je
+  // Partikel wären 70 Zustandswechsel pro Bild – so sind es vier.
+  const stufen = (fmt, hell, zeichne) => {
+    for (let b = 0; b < 4; b++) {
+      ctx.fillStyle = fmt((b + 0.5) / 4);
+      ctx.beginPath();                    // eine Stufe = ein Pfad = ein Zeichenbefehl
+      for (const p of DUST) if (Math.min(3, hell(p) * 4 | 0) === b) zeichne(p);
+      ctx.fill();
+    }
+  };
+  if (lava > 0.04) {                      // Glut steigt auf und flackert
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    stufen(f => rgba([255, 150, 60], 0.55 * lava * f),
+           p => 0.5 + 0.5 * Math.sin(t * 3 + p.d * 4),
+           p => { const s = p.s * 1.3 * Math.max(1, SCALE);
+                  ctx.rect(wrap(p.x + Math.sin(t * 0.8 + p.d) * 0.03) * W,
+                           wrap(p.y - t * p.v * 1.7) * H, s, s); });
+    ctx.restore();
+  }
+  if (raum > 0.04) {                      // Staub steht fast still und funkelt
+    stufen(f => rgba([214, 226, 255], 0.55 * raum * f),
+           p => Math.abs(Math.sin(t * 0.9 + p.d * 3)),
+           p => { const s = p.s * Math.max(1, SCALE);
+                  ctx.rect(wrap(p.x + t * 0.004) * W, wrap(p.y + t * p.v * 0.15) * H, s, s); });
+  }
+}
+
+/* ---- Eingefrorene im Gletscher ------------------------------------------
+   Tiere und Menschen, die ein Stück unter der Oberfläche im Eis stecken. Sie
+   werden auf den Geländekörper geklippt, können also nie über die Kante
+   ragen, und sind reine Optik – gefahren wird darüber hinweg.
+   Die Formen sind in Einheiten gezeichnet (1 = halbe Körperlänge) und werden
+   erst beim Zeichnen skaliert; so passt eine Form für jede Größe.        */
+const FROZEN = [
+  () => {                                   // Mammut
+    ctx.beginPath(); ctx.ellipse(0, 0, 1, 0.62, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-0.34, -0.4, 0.52, 0.34, 0, 0, 7); ctx.fill();  // Schulterbuckel
+    ctx.beginPath(); ctx.arc(-1.05, -0.05, 0.5, 0, 7); ctx.fill();
+    for (const bx of [-0.6, -0.15, 0.42, 0.82]) ctx.fillRect(bx - 0.1, 0.42, 0.2, 0.72);
+    ctx.lineCap = "round";
+    ctx.lineWidth = 0.2;                    // Rüssel, hängt fast senkrecht
+    ctx.beginPath(); ctx.moveTo(-1.22, 0.28);
+    ctx.quadraticCurveTo(-1.56, 0.66, -1.4, 1.06); ctx.stroke();
+    ctx.lineWidth = 0.13;                   // Stoßzahn, schwingt nach vorn aus
+    ctx.beginPath(); ctx.moveTo(-1.38, 0.16);
+    ctx.quadraticCurveTo(-2.08, 0.56, -2.12, -0.08); ctx.stroke();
+  },
+  () => {                                   // Mensch, mitten in der Bewegung
+    ctx.beginPath(); ctx.arc(0, -1.05, 0.3, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, -0.3, 0.28, 0.5, 0, 0, 7); ctx.fill();
+    ctx.lineCap = "round"; ctx.lineWidth = 0.17;
+    ctx.beginPath();
+    ctx.moveTo(-0.2, -0.55); ctx.lineTo(-0.75, -0.95);   // Arme
+    ctx.moveTo(0.2, -0.55);  ctx.lineTo(0.7, -0.2);
+    ctx.moveTo(-0.12, 0.16); ctx.lineTo(-0.34, 0.95);    // Beine
+    ctx.moveTo(0.12, 0.16);  ctx.lineTo(0.4, 0.9);
+    ctx.stroke();
+  },
+  () => {                                   // Fisch
+    ctx.beginPath(); ctx.ellipse(0, 0, 0.88, 0.38, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(0.8, 0); ctx.lineTo(1.45, -0.42);
+    ctx.lineTo(1.45, 0.42); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-0.1, -0.32); ctx.lineTo(0.3, -0.72);
+    ctx.lineTo(0.42, -0.3); ctx.closePath(); ctx.fill();   // Rückenflosse
+  },
+  () => {                                   // Vogel mit ausgebreiteten Flügeln
+    ctx.beginPath(); ctx.ellipse(0, 0, 0.66, 0.27, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(-0.7, -0.16, 0.24, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-0.9, -0.2); ctx.lineTo(-1.28, -0.1);
+    ctx.lineTo(-0.88, 0.0); ctx.closePath(); ctx.fill();   // Schnabel
+    ctx.beginPath();                                       // Flügel und Schwanz
+    ctx.moveTo(-0.2, -0.16); ctx.lineTo(0.34, -0.86); ctx.lineTo(0.5, -0.1); ctx.closePath();
+    ctx.moveTo(-0.2, 0.16);  ctx.lineTo(0.3, 0.72);  ctx.lineTo(0.48, 0.08); ctx.closePath();
+    ctx.moveTo(0.55, -0.14); ctx.lineTo(1.16, -0.34); ctx.lineTo(1.12, 0.24); ctx.closePath();
+    ctx.fill();
+  },
+  () => {                                   // Urzeit-Echse
+    ctx.beginPath(); ctx.ellipse(0, 0, 0.8, 0.42, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(-1.25, -0.6, 0.28, 0, 7); ctx.fill();
+    ctx.lineCap = "round"; ctx.lineWidth = 0.22;
+    ctx.beginPath(); ctx.moveTo(-0.7, -0.2);
+    ctx.quadraticCurveTo(-1.25, -0.3, -1.25, -0.6); ctx.stroke();   // Hals
+    ctx.lineWidth = 0.16;
+    ctx.beginPath(); ctx.moveTo(0.75, -0.05);
+    ctx.quadraticCurveTo(1.5, 0.1, 1.7, -0.5); ctx.stroke();        // Schwanz
+    ctx.fillRect(-0.42, 0.3, 0.2, 0.7); ctx.fillRect(0.3, 0.3, 0.2, 0.7);
+  },
+];
+const FROZEN_STEP = 300;
+
+function drawFrozen() {
+  const xl = wxAt(-80), xr = wxAt(W + 80);
+  for (let k = Math.floor(xl / FROZEN_STEP); k <= Math.ceil(xr / FROZEN_STEP); k++) {
+    if (hash(k * 6.7 + 3.1) > 0.62) continue;        // nicht an jeder Stelle einer
+    const wx = (k + hash(k * 2.3) * 0.8 - 0.4) * FROZEN_STEP;
+    // Dicht unter der Oberfläche: tiefer liegende wären fast immer unter dem
+    // Bildrand, weil vom Boden nur ein schmaler Streifen zu sehen ist.
+    const wy = terrainY(wx) - (42 + hash(k * 4.9) * 68);
+    const eis = iceAt(wy);
+    if (eis < 0.3) continue;                         // nur im Gletscher
+    const s = (20 + hash(k * 8.1) * 13) * SCALE;
+    ctx.save();
+    ctx.translate(sx(wx), sy(wy));
+    ctx.rotate((hash(k * 3.3) - 0.5) * 1.5);         // schief eingefroren
+    ctx.scale(s, s);
+    ctx.fillStyle = rgba([40, 88, 124], 0.55 * eis);
+    ctx.strokeStyle = rgba([40, 88, 124], 0.55 * eis);
+    FROZEN[Math.floor(hash(k * 11.3) * FROZEN.length)]();
+    ctx.restore();
+  }
+}
+
+function drawTerrain() {
+  const pts = [];
+  for (let px = -20; px <= W + 20; px += 5) {
+    const wx = wxAt(px);
+    // Unter einer Holzschanze wird der Berg in seiner gewachsenen Form
+    // gezeichnet – die Rampe steht als Gerüst darauf, gefahren wird oben.
+    pts.push([px, sy(terrainY(wx) - jumpRise(wx, true))]);
+  }
+
+  const body = new Path2D();
+  body.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) body.lineTo(pts[i][0], pts[i][1]);
+  body.lineTo(W + 20, H + 40); body.lineTo(-20, H + 40); body.closePath();
+
+  // Alles über der Oberfläche – darauf wird der Bewuchs geklippt, damit von
+  // ihm nichts im Berg zu sehen ist. Der Schatten liegt dagegen auf dem Boden
+  // und wird deshalb ungeklippt gezeichnet, nachdem der Boden steht.
+  const drueber = new Path2D();
+  drueber.moveTo(-20, -40); drueber.lineTo(W + 20, -40);
+  for (let i = pts.length - 1; i >= 0; i--) drueber.lineTo(pts[i][0], pts[i][1]);
+  drueber.closePath();
+
+  ctx.fillStyle = heightGrad(RAMP_BODY); ctx.fill(body);
+
+  // Tiefe: nach unten hin abdunkeln
+  const sh = ctx.createLinearGradient(0, H * 0.5, 0, H);
+  sh.addColorStop(0, "rgba(0,0,0,0)");
+  sh.addColorStop(1, "rgba(10,14,26,.2)");
+  ctx.fillStyle = sh; ctx.fill(body);
+
+  const surf = new Path2D();
+  surf.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) surf.lineTo(pts[i][0], pts[i][1]);
+
+  // Innenzeichnung. Auf den Körper geklippt, damit nichts über die Kante in
+  // den Himmel ragt – ein dicker Strich auf der Oberfläche liegt sonst halb
+  // darüber.
+  ctx.save();
+  ctx.clip(body);
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = heightGrad(RAMP_DECK);    // Schnee-/Eisauflage
+  ctx.lineWidth = 26 * SCALE; ctx.stroke(surf);
+  // Risse: im Fels Spalten, im Gletscher blaue Klüfte, im Schnee nichts
+  const xl = wxAt(-30), xr = wxAt(W + 30), RST = 190;
+  ctx.lineCap = "round";
+  for (let k = Math.floor(xl / RST); k <= Math.ceil(xr / RST); k++) {
+    if (hash(k * 2.9 + 1.7) > 0.62) continue;
+    const wx = (k + hash(k * 1.3) * 0.7) * RST;
+    const wy = terrainY(wx) - jumpRise(wx, true);
+    const eis = iceAt(wy), lava = lavaAt(wy), raum = spaceAt(wy);
+    const fels = 1 - smooth((wy - CFG.SNOWLINE) / CFG.SNOW_FADE);
+    const a = fels * 0.3 + eis * 0.42 + lava * 0.9 + raum * 0.34;
+    if (a < 0.04) continue;
+    const len = (26 + hash(k * 7.7) * 46) * SCALE, X = sx(wx), Y = sy(wy) + 7 * SCALE;
+    const ziel = X + len * (hash(k * 5.1) - 0.5) * 0.8, unten = Y + len;
+    let col = lerp3([54, 40, 30], [58, 140, 186], eis);
+    col = lerp3(col, [255, 116, 40], lava);        // Lava-Ader
+    col = lerp3(col, [176, 194, 226], raum);       // Staubriss
+    ctx.strokeStyle = rgba(col, a);
+    ctx.lineWidth = (1.8 + eis + lava * 2.4) * SCALE;
+    ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(ziel, unten); ctx.stroke();
+    if (lava > 0.05) {                             // heller Kern, der glüht
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = rgba([255, 226, 150], 0.55 * lava);
+      ctx.lineWidth = 1.2 * SCALE;
+      ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(ziel, unten); ctx.stroke();
+      ctx.restore();
+    }
+  }
+  drawFrozen();                     // Eingefrorene liegen im geklippten Körper
+  ctx.restore();
+
+  // Kante: Gras unten, Schnee darüber, Eis ganz oben
+  ctx.strokeStyle = heightGrad(RAMP_EDGE);
+  ctx.lineWidth = 7 * SCALE; ctx.lineJoin = "round"; ctx.stroke(surf);
+
+  ctx.save();
+  ctx.clip(body);                   // Pfad und Schatten liegen auf dem Boden
+  drawPfad();
+  bewuchs(true);
+  drawLeute(true);
+  ctx.restore();
+  ctx.save();
+  ctx.clip(drueber);
+  bewuchs(false);                   // die Objekte selbst, oberhalb der Kante
+  ctx.restore();
+  TERRAIN_BODY = body;              // Dorf und Geysire klippen ihre Schatten daran
+}
+let TERRAIN_BODY = null;
+
+/* Bewuchs auf der Fahrbahn. Jede Höhenstufe hat ihr eigenes Gewächs, und
+   welches erscheint, entscheidet dieselbe Zonenmischung wie bei den Farben –
+   an den Übergängen stehen die Sorten also eine Weile nebeneinander.
+   Alles steht senkrecht zur Oberfläche, wächst also aus dem Hang heraus, und
+   kommt aus hash(): kein gespeicherter Zustand, beim Zurückfahren identisch. */
+// Wie weit ein Schatten je Höheneinheit nach links reicht. 0,9 entspricht
+// einer Sonne knapp 50° über dem Horizont – sie steht im Bild oben rechts.
+const SCHATTEN_LANG = 0.9;
+
+/* Schattenband auf dem Boden. Es beginnt an der Standfläche des Objekts,
+   läuft nach links von der Sonne weg und wird zur Spitze hin schmaler. Es
+   folgt dabei dem Gelände, liegt also auch über Wellen und Kanten sauber auf –
+   ein Oval würde dort abheben.
+   xm/halb/hoehe in Weltpixeln. */
+function schattenBand(xm, halb, hoehe, alpha) {
+  const x1 = xm + halb, x0 = xm - halb, xt = x0 - hoehe * SCHATTEN_LANG;
+  const dicke = 0.34 * halb + 5;
+  ctx.fillStyle = "rgba(22,24,34," + alpha + ")";
+  ctx.beginPath();
+  // Oberkante direkt an der Geländelinie, Unterkante darunter in den Hang
+  // hinein. In der Seitenansicht ist der Boden die Fläche unter der Linie –
+  // oberhalb würde der Clip auf den Berg alles wegschneiden.
+  for (let x = x1; x >= xt; x -= 9) ctx.lineTo(sx(x), sy(terrainY(x)) + 1 * SCALE);
+  for (let x = xt; x <= x1; x += 9) {
+    const t = x >= x0 ? 1 : (x - xt) / Math.max(1, x0 - xt);   // 0 an der Spitze
+    ctx.lineTo(sx(x), sy(terrainY(x)) + (1 + dicke * (0.22 + 0.78 * t)) * SCALE);
+  }
+  ctx.closePath(); ctx.fill();
+}
+
+/* ---- Leute unterwegs ----------------------------------------------------
+   Auf jeder Höhenstufe andere: im Tal Dorfbewohner, im Schnee und im Eis
+   Wanderer mit Rucksack und Stock, am Vulkan Fachleute im Schutzanzug, in der
+   Sternenzone Außerirdische. Sie gehen auf einem kurzen Stück hin und her –
+   die Position kommt aus der Zeit, es wird also nichts gespeichert.       */
+const LEUT_STEP = 520;
+
+function figur(ctx2, art, s, t, ph, hin) {
+  const schritt = Math.sin(t * 3.4 + ph * 5) * hin;      // Beinausschlag
+  const wippe = Math.abs(Math.cos(t * 3.4 + ph * 5)) * 1.2;
+  const F = { dorf:   { haut: "#e8b98d", kleid: "#4a6fa5", bein: "#39405a" },
+              wander: { haut: "#e8b98d", kleid: "#c8503c", bein: "#3a4256" },
+              vulkan: { haut: "#f0d9a8", kleid: "#e8a33c", bein: "#8a6428" },
+              alien:  { haut: "#8fe07a", kleid: "#4c8f6a", bein: "#2f5c46" } }[art];
+  ctx2.save();
+  ctx2.scale(s, s);
+  ctx2.translate(0, -wippe);
+  // Beine
+  ctx2.strokeStyle = F.bein; ctx2.lineWidth = 3.4; ctx2.lineCap = "round";
+  ctx2.beginPath();
+  ctx2.moveTo(0, -13); ctx2.lineTo(schritt * 4, 0);
+  ctx2.moveTo(0, -13); ctx2.lineTo(-schritt * 4, 0);
+  ctx2.stroke();
+  // Rumpf
+  ctx2.fillStyle = F.kleid;
+  ctx2.beginPath(); ctx2.roundRect(-4.5, -30, 9, 18, 3); ctx2.fill();
+  // Arme
+  ctx2.strokeStyle = F.kleid; ctx2.lineWidth = 3;
+  ctx2.beginPath();
+  ctx2.moveTo(-3, -27); ctx2.lineTo(-schritt * 3 - 4, -17);
+  ctx2.moveTo(3, -27);  ctx2.lineTo(schritt * 3 + 4, -17);
+  ctx2.stroke();
+  if (art === "wander") {                                // Rucksack und Stock
+    ctx2.fillStyle = "#3f6b46";
+    ctx2.beginPath(); ctx2.roundRect(-8, -28, 5, 13, 2); ctx2.fill();
+    ctx2.strokeStyle = "#a98150"; ctx2.lineWidth = 1.6;
+    ctx2.beginPath(); ctx2.moveTo(6, -20); ctx2.lineTo(8, 1); ctx2.stroke();
+  }
+  if (art === "vulkan") {                                // Messgerät am Arm
+    ctx2.fillStyle = "#2f3644";
+    ctx2.fillRect(schritt * 3 + 2, -20, 5, 4);
+  }
+  // Kopf
+  ctx2.fillStyle = F.haut;
+  if (art === "alien") {
+    ctx2.beginPath(); ctx2.ellipse(0, -37, 6, 7.5, 0, 0, 7); ctx2.fill();
+    ctx2.strokeStyle = F.haut; ctx2.lineWidth = 1.3;      // Fühler
+    ctx2.beginPath();
+    ctx2.moveTo(-2.5, -44); ctx2.lineTo(-4, -50);
+    ctx2.moveTo(2.5, -44);  ctx2.lineTo(4, -50);
+    ctx2.stroke();
+    ctx2.fillStyle = "#16241c";
+    ctx2.beginPath();
+    ctx2.ellipse(-2.4, -38, 1.9, 2.6, -0.3, 0, 7);
+    ctx2.ellipse(2.4, -38, 1.9, 2.6, 0.3, 0, 7);
+    ctx2.fill();
+  } else {
+    ctx2.beginPath(); ctx2.arc(0, -35, 5, 0, 7); ctx2.fill();
+    if (art === "vulkan") {                              // Helm mit Visier
+      ctx2.fillStyle = "#f0c469";
+      ctx2.beginPath(); ctx2.arc(0, -36, 6, Math.PI, 2 * Math.PI); ctx2.fill();
+      ctx2.fillStyle = "rgba(60,80,110,.75)";
+      ctx2.fillRect(-5, -36, 10, 3.5);
+    } else if (art === "wander") {                       // Mütze
+      ctx2.fillStyle = "#c8503c";
+      ctx2.beginPath(); ctx2.arc(0, -36, 5.4, Math.PI, 2 * Math.PI); ctx2.fill();
+    }
+  }
+  ctx2.restore();
+}
+
+function drawLeute(schattenLauf) {
+  const xl = wxAt(-80), xr = wxAt(W + 80), t = performance.now() / 1000;
+  for (let k = Math.floor(xl / LEUT_STEP); k <= Math.ceil(xr / LEUT_STEP); k++) {
+    if (hash(k * 3.77 + 8.2) > 0.45) continue;
+    const heim = (k + hash(k * 2.9 + 1) * 0.7) * LEUT_STEP;
+    const ph = hash(k * 5.3 + 4) * 6.28;
+    const spanne = 60 + hash(k * 7.1) * 70;
+    const wx = heim + Math.sin(t * 0.32 + ph) * spanne;
+    const hin = Math.cos(t * 0.32 + ph) > 0 ? 1 : -1;    // Blickrichtung
+    if (Math.abs(slopeAt(wx)) > 0.4) continue;           // nicht am Steilhang
+    if (poolAt(wx) || GEYSERS.some(g => Math.abs(g.x - wx) < 90)) continue;
+    const wy = terrainY(wx) - jumpRise(wx, true);
+    const eis = iceAt(wy), lava = lavaAt(wy), raum = spaceAt(wy);
+    const schnee = smooth((wy - CFG.SNOWLINE + 500) / 900) * (1 - eis - lava - raum);
+    const art = raum > 0.4 ? "alien" : lava > 0.4 ? "vulkan"
+              : (eis > 0.3 || schnee > 0.35) ? "wander" : "dorf";
+    const s = SCALE * 1.35;
+    if (schattenLauf) { schattenBand(wx, 7 * s / SCALE, 44 * s / SCALE, 0.26); continue; }
+    ctx.save();
+    ctx.translate(sx(wx), sy(wy));
+    ctx.scale(hin, 1);                                   // spiegeln je Richtung
+    figur(ctx, art, s, t, ph, 1);
+    ctx.restore();
+  }
+}
+
+/* Trampelpfad im Tal und im Schnee: eine hellere, gestrichelte Spur entlang
+   der Oberfläche. Höher hinauf gibt es keine Wege mehr. */
+function drawPfad() {
+  const xl = wxAt(-40), xr = wxAt(W + 40);
+  ctx.save();
+  ctx.lineCap = "round";
+  // Breit angelegt: die obere Hälfte schneidet der Clip auf den Berg weg,
+  // sichtbar bleibt ein Streifen direkt unter der Grasnarbe.
+  ctx.setLineDash([15 * SCALE, 8 * SCALE]);
+  ctx.lineWidth = 12 * SCALE;
+  for (let x = xl; x <= xr; x += 14) {
+    const wy = terrainY(x) - jumpRise(x, true);
+    const da = 1 - smooth((wy - CFG.SNOWLINE - 400) / 900);   // bis über die Schneegrenze
+    if (da < 0.05 || Math.abs(slopeAt(x)) > 0.55) continue;
+    const wy2 = terrainY(x + 14) - jumpRise(x + 14, true);
+    const schnee = smooth((wy - CFG.SNOWLINE + 400) / 900);
+    ctx.strokeStyle = rgba(lerp3([168, 140, 100], [216, 228, 240], schnee), 0.6 * da);
+    ctx.beginPath();
+    ctx.moveTo(sx(x), sy(wy) + 3 * SCALE);
+    ctx.lineTo(sx(x + 14), sy(wy2) + 3 * SCALE);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function bewuchs(schattenLauf) {
+  const xl = wxAt(-40), xr = wxAt(W + 40), BST = 34;
+  for (let k = Math.floor(xl / BST); k <= Math.ceil(xr / BST); k++) {
+    const r0 = hash(k * 1.91 + 0.7);
+    // Etwas dichter angesetzt als früher: die Hanggrenzen weiter unten sieben
+    // in den oberen Gebieten rund die Hälfte wieder aus.
+    if (r0 > 0.85) continue;
+    const wx = (k + hash(k * 4.3) * 0.8) * BST;
+    const wy = terrainY(wx) - jumpRise(wx, true);
+
+    // Gewichte der Stufen an dieser Stelle
+    const eis = iceAt(wy), lava = lavaAt(wy), raum = spaceAt(wy);
+    const oben = eis + lava + raum;
+    const gruen = (1 - smooth((wy - CFG.SNOWLINE + 900) / 1100)) * (1 - oben);
+    const schnee = Math.max(0, 1 - gruen - oben);
+    // Nur eine Sorte je Stelle: die schwerste gewinnt, ausgelost über hash
+    const wahl = hash(k * 5.7 + 2) * (gruen + schnee + eis + lava + raum);
+    let art, kraft;
+    if (wahl < gruen)                     { art = "gruen"; kraft = gruen; }
+    else if (wahl < gruen + schnee)       { art = "schnee"; kraft = schnee; }
+    else if (wahl < gruen + schnee + eis) { art = "eis"; kraft = eis; }
+    else if (wahl < gruen + schnee + eis + lava) { art = "lava"; kraft = lava; }
+    else                                  { art = "raum"; kraft = raum; }
+    if (kraft < 0.05) continue;
+
+    const sl = slopeAt(wx), nl = Math.hypot(sl, 1);
+    const X = sx(wx), Y = sy(wy);
+    const r1 = hash(k * 6.1 + 5);                  // zweite Würfelzahl je Stelle
+
+    /* Welche Variante steht hier – und was verträgt sie?
+       [höchstes Gefälle, senkrecht statt hangparallel]
+       An Steilwänden wächst kein Baum und liegt keine Eisplatte; und was steht
+       (Baum, Säule, Monolith), steht lotrecht und nicht rechtwinklig zum Hang. */
+    let variante;
+    if (art === "gruen")       variante = r0 < 0.2 ? "busch" : "gras";
+    else if (art === "schnee") variante = r1 < 0.34 ? "tanne" : r1 < 0.7 ? "wehe" : "felsblock";
+    else if (art === "eis")    variante = r1 < 0.4 ? "buckel" : r1 < 0.78 ? "kristall" : "flaeche";
+    else if (art === "lava")   variante = r1 < 0.42 ? "block" : r1 < 0.8 ? "saeulen" : "schlot";
+    else                       variante = r1 < 0.4 ? "findling" : r1 < 0.76 ? "mineral" : "monolith";
+    // Was lotrecht steht, verträgt steilen Grund – ein Baum wächst auch aus
+    // einer Flanke gerade nach oben. Eng wird es nur für Flachliegendes:
+    // eine Schneewehe oder eine Eisplatte an einer Steilwand gibt es nicht.
+    // Dritter Wert: halbe Standbreite (0 = zu klein für einen Schatten),
+    // vierter: Höhe des Objekts – daraus wächst die Schattenlänge.
+    const REGEL = {
+      busch: [1.1, 0, 11, 22], gras: [1.4, 0, 0, 0],
+      tanne: [0.95, 1, 17, 66], wehe: [0.6, 0, 0, 0], felsblock: [0.8, 0, 11, 13],
+      buckel: [0.7, 0, 0, 0], kristall: [1.0, 0, 10, 23], flaeche: [0.4, 0, 0, 0],
+      block: [0.85, 0, 12, 13], saeulen: [0.95, 1, 12, 28], schlot: [0.5, 0, 0, 0],
+      findling: [0.85, 0, 13, 12], mineral: [0.9, 0, 10, 10], monolith: [0.95, 1, 8, 22],
+    }[variante];
+    if (Math.abs(sl) > REGEL[0]) continue;
+    if (schattenLauf && !REGEL[2]) continue;
+
+    // Im Tal sind Gras und Büsche in der richtigen Größe; weiter oben stehen
+    // Fels, Eis und Kristall größer, sonst gehen sie im weiten Hang unter.
+    const gross = { gruen: 1, schnee: 1.7, eis: 1.8, lava: 1.75, raum: 1.7 }[art];
+    const s = SCALE * (0.8 + hash(k * 7.3) * 0.6) * gross;
+    // Hangkoordinaten auf dem Bildschirm: q läuft längs der Oberfläche,
+    // l steht senkrecht darauf – oder eben lotrecht, wenn die Sorte steht.
+    const ux = REGEL[1] ? 0 : -sl / nl, uy = -1 / (REGEL[1] ? 1 : nl);
+    const qx = REGEL[1] ? 1 : 1 / nl, qy = REGEL[1] ? 0 : -sl / nl;
+    const P = (q, l) => [X + (qx * q + ux * l) * s, Y + (qy * q + uy * l) * s];
+    const form = (punkte) => {                     // Vieleck in Hangkoordinaten
+      ctx.beginPath();
+      punkte.forEach(([q, l], i) => {
+        const p = P(q, l);
+        i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]);
+      });
+      ctx.closePath(); ctx.fill();
+    };
+    const hoch = (l) => P(0, l);
+
+    if (schattenLauf) {
+      // Die Sonne steht oben rechts: der Schatten zieht nach links, seine
+      // Länge kommt aus der Objekthöhe. Maße von Formeinheiten in Weltpixel.
+      const um = s / SCALE;
+      schattenBand(wx, REGEL[2] * um, REGEL[3] * um, 0.26);
+      continue;
+    }
+
+    if (art === "gruen") {
+      if (r0 < 0.2) {                                // Busch
+        ctx.fillStyle = rgba([62, 116, 66], 0.92 * kraft);
+        ctx.beginPath();
+        for (const [dx, dy, rr] of [[-7, 5, 9], [6, 7, 10], [0, 15, 9]]) {
+          const p = hoch(dy);
+          ctx.moveTo(p[0] + dx * s + rr * s, p[1]);
+          ctx.arc(p[0] + dx * s, p[1], rr * s, 0, 7);
+        }
+        ctx.fill();
+      } else {                                       // Grasbüschel
+        ctx.strokeStyle = rgba([86, 150, 74], 0.85 * kraft);
+        ctx.lineWidth = 2.4 * s; ctx.lineCap = "round";
+        ctx.beginPath();
+        for (const [nb, l] of [[-5, 13], [0, 18], [5, 12]]) {
+          const fuss = hoch(0), spitz = hoch(l);
+          ctx.moveTo(fuss[0], fuss[1]);
+          ctx.lineTo(spitz[0] + nb * s, spitz[1]);
+        }
+        ctx.stroke();
+        if (hash(k * 9.7) > 0.72) {                  // ab und zu eine Blume
+          const p = hoch(17);
+          ctx.fillStyle = rgba(hash(k * 2.2) > 0.5 ? [244, 214, 92] : [232, 132, 160], kraft);
+          ctx.beginPath(); ctx.arc(p[0], p[1], 3.4 * s, 0, 7); ctx.fill();
+        }
+      }
+    } else if (art === "schnee") {
+      if (r1 < 0.34) {                               // Tanne mit vier Etagen
+        ctx.fillStyle = rgba([62, 46, 34], 0.92 * kraft);
+        form([[-3.5, -7], [3.5, -7], [3, 9], [-3, 9]]);        // Stamm
+        ctx.fillStyle = rgba([40, 72, 58], 0.94 * kraft);
+        form([[-17, 3], [-9, 21], [-13, 19],         // unterste Etage
+              [-7, 37], [-10, 35],                   // zweite
+              [-4.5, 51], [-6.5, 49],                // dritte
+              [0, 66],                               // Spitze
+              [6.5, 49], [4.5, 51],
+              [10, 35], [7, 37],
+              [13, 19], [9, 21], [17, 3]]);
+        // Schnee liegt auf den Zweigspitzen, nicht als Kegel obendrauf
+        ctx.fillStyle = rgba([240, 248, 253], 0.9 * kraft);
+        for (const [q, l, b] of [[-17, 3, 7], [-13, 19, 5.5], [-10, 35, 4.5], [-6.5, 49, 3.5]]) {
+          form([[q, l], [q + b, l + b * 1.9], [q + b * 1.5, l + b * 1.2]]);
+          form([[-q, l], [-q - b, l + b * 1.9], [-q - b * 1.5, l + b * 1.2]]);
+        }
+        form([[-3, 57], [0, 66], [3, 57], [0, 60]]);           // Schnee auf der Spitze
+      } else if (r1 < 0.7) {                         // Schneewehe
+        ctx.fillStyle = rgba([240, 247, 253], 0.8 * kraft);
+        const p = hoch(0);
+        ctx.beginPath();
+        ctx.ellipse(p[0], p[1], 14 * s, 7 * s, Math.atan(sl), Math.PI, 2 * Math.PI);
+        ctx.fill();
+      } else {                                       // Felsblock mit Schneehaube
+        ctx.fillStyle = rgba([104, 110, 120], 0.9 * kraft);
+        form([[-9, -7], [-7, 8], [-2, 12], [5, 11], [9, 4], [8, -7]]);
+        ctx.fillStyle = rgba([242, 248, 253], 0.9 * kraft);
+        form([[-7.5, 8], [-2, 13.5], [5, 12], [5.5, 10], [-1.5, 11], [-6, 7]]);
+      }
+    } else if (art === "eis") {
+      if (r1 < 0.4) {                                // Eisbuckel, glatt
+        const p = hoch(0);
+        const g = ctx.createLinearGradient(p[0], p[1] - 14 * s, p[0], p[1]);
+        g.addColorStop(0, rgba([236, 252, 255], 0.9 * kraft));
+        g.addColorStop(1, rgba([144, 202, 228], 0.85 * kraft));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(p[0], p[1], 15 * s, 11 * s, Math.atan(sl), Math.PI, 2 * Math.PI);
+        ctx.fill();
+        ctx.fillStyle = rgba([255, 255, 255], 0.5 * kraft);   // Glanzlicht
+        form([[-6, 5], [-2, 9], [1, 8], [-3, 4]]);
+      } else if (r1 < 0.78) {                        // Kristallgruppe
+        const g = ctx.createLinearGradient(X, Y - 24 * s, X, Y);
+        g.addColorStop(0, rgba([240, 253, 255], 0.92 * kraft));
+        g.addColorStop(1, rgba([138, 198, 226], 0.85 * kraft));
+        ctx.fillStyle = g;
+        form([[-8, -6], [-6, 11], [-3, -6]]);
+        form([[-2, -6], [1, 23], [4, -6]]);
+        form([[4, -6], [8, 14], [10, -6]]);
+      } else {                                       // blanke Eisfläche
+        ctx.fillStyle = rgba([176, 226, 244], 0.55 * kraft);
+        const p = hoch(1);
+        ctx.beginPath();
+        ctx.ellipse(p[0], p[1], 17 * s, 3.6 * s, Math.atan(sl), 0, 7);
+        ctx.fill();
+      }
+    } else if (art === "lava") {
+      if (r1 < 0.42) {                               // Basaltblock mit glühendem Riss
+        // deutlich heller als der Untergrund, sonst sieht man nur den Riss
+        ctx.fillStyle = rgba([92, 74, 72], 0.96 * kraft);
+        form([[-11, -7], [-9, 9], [-1, 13], [7, 10], [10, 2], [9, -7]]);
+        // Lichtseite als Fläche, nicht als heller Strich – sonst sieht es aus
+        // wie eine aufgemalte Klammer statt wie ein beleuchteter Stein
+        ctx.fillStyle = rgba([112, 90, 86], 0.7 * kraft);
+        form([[-9, 9], [-1, 13], [7, 10], [4, 5], [-1, 8], [-8, 5]]);
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.strokeStyle = rgba([255, 146, 52], 0.5 * kraft);
+        ctx.lineWidth = 1.1 * s;
+        const a = P(-6, 2), b = P(-1, 8), c = P(6, 5);
+        ctx.beginPath();
+        ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]);
+        ctx.stroke();
+        ctx.restore();
+      } else if (r1 < 0.8) {                         // Basaltsäulen
+        ctx.fillStyle = rgba([84, 68, 68], 0.96 * kraft);
+        form([[-10, -7], [-10, 16], [-7, 19], [-4, 16], [-4, -7]]);
+        form([[-3, -7], [-3, 25], [0, 28], [3, 25], [3, -7]]);
+        form([[4, -7], [4, 13], [7, 16], [10, 13], [10, -7]]);
+        ctx.fillStyle = rgba([126, 104, 98], 0.85 * kraft);   // Deckflächen
+        form([[-10, 16], [-7, 19], [-4, 16], [-7, 14]]);
+        form([[-3, 25], [0, 28], [3, 25], [0, 23]]);
+        form([[4, 13], [7, 16], [10, 13], [7, 11]]);
+      } else {                                       // Schlot, aus dem es qualmt
+        ctx.fillStyle = rgba([88, 70, 68], 0.94 * kraft);
+        form([[-8, -7], [-5, 10], [5, 10], [8, -7]]);
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = rgba([255, 168, 70], 0.6 * kraft);
+        const p = P(0, 10);
+        ctx.beginPath(); ctx.ellipse(p[0], p[1], 5 * s, 2 * s, Math.atan(sl), 0, 7); ctx.fill();
+        ctx.restore();
+      }
+    } else {
+      if (r1 < 0.4) {                                // Findlinge, kantig
+        ctx.fillStyle = rgba([74, 82, 112], 0.9 * kraft);
+        form([[-12, -7], [-10, 7], [-4, 10], [-1, 4], [-2, -7]]);
+        form([[1, -7], [2, 9], [8, 12], [12, 6], [11, -7]]);
+        ctx.fillStyle = rgba([116, 128, 168], 0.75 * kraft);   // Lichtseite
+        form([[2, 9], [8, 12], [12, 6], [9, 6], [5, 9]]);
+      } else if (r1 < 0.76) {                        // Mineralbrocken mit Funkeln
+        ctx.fillStyle = rgba([120, 134, 176], 0.85 * kraft);
+        form([[-9, -7], [-6, 7], [0, 10], [6, 6], [8, -7]]);
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.strokeStyle = rgba([214, 232, 255], 0.7 * kraft);
+        ctx.lineWidth = 1.3 * s;
+        const g0 = P(-1, 9);
+        ctx.beginPath();
+        ctx.moveTo(g0[0] - 5 * s, g0[1]); ctx.lineTo(g0[0] + 5 * s, g0[1]);
+        ctx.moveTo(g0[0], g0[1] - 5 * s); ctx.lineTo(g0[0], g0[1] + 5 * s);
+        ctx.stroke();
+        ctx.restore();
+      } else {                                       // Monolith, leicht gekippt
+        const kipp = (hash(k * 3.9) - 0.5) * 5;
+        ctx.fillStyle = rgba([88, 98, 132], 0.92 * kraft);
+        form([[-6, -7], [-5.5 + kipp, 22], [5.5 + kipp, 21], [6, -7]]);
+        ctx.fillStyle = rgba([146, 162, 204], 0.55 * kraft);   // beleuchtete Kante
+        form([[2, -7], [2.5 + kipp, 21.5], [5.5 + kipp, 21], [6, -7]]);
+      }
+    }
+  }
+}
+
+// Holzschanzen: Bretterbelag auf der Rampe, darunter Stützen bis auf den
+// gewachsenen Boden. Die Höhe der Stützen ist genau jumpRise(x) – also das,
+// was die Schanze über dem Gelände liegt.
+function drawJumps() {
+  const xl = wxAt(-40), xr = wxAt(W + 40);
+  for (const j of JUMPS) {
+    if (!j.holz) continue;
+    const e = j.x0 + j.L + JDROP;         // inklusive der abfallenden Rückseite
+    if (e < xl || j.x0 > xr) continue;
+    const s = SCALE;
+    const N = Math.max(8, Math.min(40, Math.round((sx(e) - sx(j.x0)) / (11 * s))));
+    const p = [], n = [], stuetze = [];
+    for (let i = 0; i <= N; i++) {
+      const wx = j.x0 + (e - j.x0) * i / N;
+      const sl = slopeAt(wx), nl = Math.hypot(sl, 1);
+      p.push([sx(wx), sy(terrainY(wx))]);
+      n.push([sl / nl, 1 / nl]);            // Normale, Bildschirm-Y zeigt nach unten
+      stuetze.push(jumpRise(wx) * s);       // Höhe über dem gewachsenen Boden
+    }
+    const laengs = (off, w, col) => {
+      ctx.strokeStyle = col; ctx.lineWidth = w * s;
+      ctx.beginPath();
+      for (let i = 0; i <= N; i++) {
+        const X = p[i][0] + n[i][0] * off * s, Y = p[i][1] + n[i][1] * off * s;
+        i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y);
+      }
+      ctx.stroke();
+    };
+
+    // Stützen mit Diagonalen
+    ctx.strokeStyle = "rgba(74,55,38,.9)"; ctx.lineWidth = 2.4 * s;
+    for (let i = 1; i < N; i += 3) {
+      if (stuetze[i] < 6 * s) continue;
+      ctx.beginPath();
+      ctx.moveTo(p[i][0], p[i][1]); ctx.lineTo(p[i][0], p[i][1] + stuetze[i]);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = "rgba(74,55,38,.55)"; ctx.lineWidth = 1.6 * s;
+    for (let i = 1; i + 3 < N; i += 6) {
+      if (stuetze[i] < 10 * s) continue;
+      ctx.beginPath();
+      ctx.moveTo(p[i][0], p[i][1] + stuetze[i]); ctx.lineTo(p[i + 3][0], p[i + 3][1]);
+      ctx.stroke();
+    }
+    // Belag und Bretterfugen
+    laengs(-1.5, 7, "#8a6b45");
+    ctx.strokeStyle = "rgba(45,32,20,.5)"; ctx.lineWidth = 1.3 * s;
+    for (let i = 1; i < N; i++) {
+      ctx.beginPath();
+      ctx.moveTo(p[i][0] + n[i][0] * -5 * s, p[i][1] + n[i][1] * -5 * s);
+      ctx.lineTo(p[i][0] + n[i][0] * 2 * s, p[i][1] + n[i][1] * 2 * s);
+      ctx.stroke();
+    }
+    laengs(-5.2, 2, "#a8865c");            // heller Kantenstrich oben
+    // Abrisskante: Stirnbrett
+    const k = N, hk = Math.max(7 * s, stuetze[k]);
+    ctx.strokeStyle = "#6d5334"; ctx.lineWidth = 3 * s;
+    ctx.beginPath();
+    ctx.moveTo(p[k][0], p[k][1] - 5 * s); ctx.lineTo(p[k][0], p[k][1] + hk);
+    ctx.stroke();
+  }
+}
+
+/* Lavabecken: oben der Spiegel mit leichter Welle, unten der Boden der Kerbe.
+   Über den Rändern fallen beide zusammen, deshalb die Begrenzung auf die
+   tiefere der beiden Linien – sonst stünde die Fläche über dem Hang. */
+function drawLava() {
+  const xl = wxAt(-60), xr = wxAt(W + 60), t = performance.now() / 1000;
+  for (const r of RAVINES) {
+    if (!r.lava || r.x2 < xl || r.x1 > xr) continue;
+    const welle = x => Math.sin(x * 0.045 + t * 1.7) * 1.8 + Math.sin(x * 0.019 - t * 1.1) * 2.4;
+    ctx.beginPath();
+    for (let x = r.x1; x <= r.x2; x += 6) ctx.lineTo(sx(x), sy(r.lavaY + welle(x)));
+    for (let x = r.x2; x >= r.x1; x -= 6)
+      ctx.lineTo(sx(x), sy(Math.min(terrainY(x) - 3, r.lavaY)));
+    ctx.closePath();
+    const g = ctx.createLinearGradient(0, sy(r.lavaY + 6), 0, sy(r.lavaY - 150));
+    g.addColorStop(0, "#ffd889");
+    g.addColorStop(0.18, "#ff8f2e");
+    g.addColorStop(1, "#8d2a12");
+    ctx.fillStyle = g; ctx.fill();
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = "rgba(255,190,90,.5)";      // Glut auf dem Spiegel
+    ctx.lineWidth = 5 * SCALE;
+    ctx.beginPath();
+    for (let x = r.x1 + 4; x <= r.x2 - 4; x += 6) ctx.lineTo(sx(x), sy(r.lavaY + welle(x)));
+    ctx.stroke();
+    // Blasen steigen auf und zerplatzen am Spiegel
+    ctx.fillStyle = "rgba(255,214,140,.55)";
+    ctx.beginPath();
+    for (let k = 0; k < 7; k++) {
+      const bx = r.x1 + ((k + 0.5) / 7) * (r.x2 - r.x1) + Math.sin(k * 2.3) * 12;
+      const ph = (t * (0.5 + hash(k * 3.1 + r.x1 * 0.01) * 0.5) + hash(k * 7.7)) % 1;
+      const rad = (1.5 + 3.5 * ph) * SCALE;
+      ctx.moveTo(sx(bx) + rad, sy(r.lavaY + welle(bx) - 16 * (1 - ph)));
+      ctx.arc(sx(bx), sy(r.lavaY + welle(bx) - 16 * (1 - ph)), rad, 0, 7);
+    }
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+/* Geysire: Krater auf dem Boden, davor Blubbern als Vorwarnung, dann die
+   Säule. Die Höhe der Säule ist dieselbe Zahl, die auch über Leben und Tod
+   entscheidet – was man sieht, trifft auch.                              */
+function drawGeysers() {
+  const xl = wxAt(-80), xr = wxAt(W + 80), t = performance.now() / 1000;
+  for (const g of GEYSERS) {
+    if (g.x < xl || g.x > xr) continue;
+    const s = geyserAt(g, G.time), X = sx(g.x), Y = sy(terrainY(g.x));
+    const R = CFG.GEY_R * SCALE;
+    // Der Krater folgt der Hangneigung, sonst steht er schief im Boden. q läuft
+    // längs der Oberfläche, l senkrecht darauf – wie beim übrigen Bewuchs.
+    const sl = slopeAt(g.x), nl = Math.hypot(sl, 1);
+    const ux = -sl / nl, uy = -1 / nl, qx = 1 / nl, qy = -sl / nl;
+    const P = (q, l) => [X + (qx * q + ux * l) * SCALE, Y + (qy * q + uy * l) * SCALE];
+    // Der Krater ist kein aufgesetzter Klotz, sondern ein Aufwurf aus dem
+    // Boden: zwei flache Wälle links und rechts in der Gesteinsfarbe, dazwischen
+    // die dunkle Öffnung. Die Ränder laufen weich in den Hang aus.
+    const R0 = CFG.GEY_R;
+    const kurve = (punkte) => {
+      ctx.beginPath();
+      punkte.forEach(([q, l], i) => {
+        const p = P(q, l);
+        i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]);
+      });
+      ctx.closePath(); ctx.fill();
+    };
+    // Farbe dicht am Gestein (#3b2f33), damit es der Boden selbst bleibt und
+    // nicht wie ein aufgesetzter Klotz wirkt
+    ctx.fillStyle = "#443539";                       // flacher Wall
+    kurve([[-R0 * 2.6, -14], [-R0 * 1.8, 2], [-R0 * 0.9, 8], [-R0 * 0.6, 7],
+           [-R0 * 1.1, 0], [-R0 * 1.7, -14]]);
+    kurve([[R0 * 2.6, -14], [R0 * 1.8, 2], [R0 * 0.9, 8], [R0 * 0.6, 7],
+           [R0 * 1.1, 0], [R0 * 1.7, -14]]);
+    ctx.fillStyle = "#523f43";                       // schwacher Rand
+    kurve([[-R0 * 1.8, 2], [-R0 * 0.9, 8], [-R0 * 0.6, 7], [-R0 * 1.6, 1]]);
+    kurve([[R0 * 1.8, 2], [R0 * 0.9, 8], [R0 * 0.6, 7], [R0 * 1.6, 1]]);
+    ctx.fillStyle = "#241a1e";                       // Schlund
+    kurve([[-R0 * 0.62, 7], [-R0 * 0.44, -6], [R0 * 0.44, -6], [R0 * 0.62, 7]]);
+    const maul = P(0, 9);                            // Austrittsöffnung
+    const MX = maul[0], MY = maul[1];
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    if (s.hoehe > 0.02) {                            // Säule, steigt senkrecht
+      const hh = g.H * s.hoehe * SCALE;
+      const lg = ctx.createLinearGradient(0, MY, 0, MY - hh);
+      lg.addColorStop(0, "rgba(255,226,150,.95)");
+      lg.addColorStop(0.45, "rgba(255,140,50,.75)");
+      lg.addColorStop(1, "rgba(255,90,30,0)");
+      ctx.fillStyle = lg;
+      ctx.beginPath();
+      ctx.moveTo(MX - R * 0.8, MY);
+      ctx.quadraticCurveTo(MX - R * 0.5, MY - hh * 0.6, MX - R * 0.15, MY - hh);
+      ctx.lineTo(MX + R * 0.15, MY - hh);
+      ctx.quadraticCurveTo(MX + R * 0.5, MY - hh * 0.6, MX + R * 0.8, MY);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "rgba(255,236,190,.8)";        // Tropfen im Flug
+      ctx.beginPath();
+      for (let k = 0; k < 9; k++) {
+        const ph = (t * 1.6 + k * 0.37) % 1;
+        const px = MX + Math.sin(k * 2.1 + t) * R * 0.7;
+        const py = MY - hh * (0.25 + ph * 0.85) + ph * ph * 30 * SCALE;
+        ctx.moveTo(px + 2 * SCALE, py);
+        ctx.arc(px, py, (1.4 + hash(k * 5.3) * 1.6) * SCALE, 0, 7);
+      }
+      ctx.fill();
+    } else if (s.warnung > 0) {                      // Vorwarnung: es blubbert
+      const a = s.warnung * (0.5 + 0.5 * Math.sin(t * 14));
+      ctx.fillStyle = "rgba(255,150,60," + (0.5 * a) + ")";
+      ctx.beginPath();
+      ctx.ellipse(MX, MY - 2 * SCALE, R * 0.7, (5 + 7 * s.warnung) * SCALE, 0, 0, 7);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+/* ---- Startdorf ----------------------------------------------------------
+   Ein paar Häuser auf den ersten Metern, damit der Lauf sichtbar aus einem Ort
+   herausführt. Das Bike startet bei x=80, also steht die Hälfte davor. Reine
+   Kulisse: keine Kollision, kein Einfluss aufs Fahren.
+   Fest ausgelegt statt gewürfelt – es soll jedes Mal dasselbe Dorf sein.  */
+const DORF = [
+  // Zwischen x=20 und 250 bleibt frei – dort steht das Bike beim Start, sonst
+  // sähe es aus, als parke es im Wohnzimmer.
+  { x: -520, b: 172, h: 128, wand: "#e6dac4", dach: "#8d4a3a", kamin: true },
+  { x: -270, b: 126, h:  98, wand: "#dfe6ea", dach: "#6b5747" },
+  { x:  -70, b: 152, h: 114, wand: "#ecdfc6", dach: "#9d5340", kamin: true },
+  { x:  340, b: 114, h:  88, wand: "#dde3e6", dach: "#75604e" },
+  { x:  620, b: 190, h: 114, wand: "#b98a5c", dach: "#5f4636", scheune: true },
+  { x:  900, b: 134, h: 106, wand: "#e8dcc4", dach: "#8d4a3a", kamin: true },
+  { x: 1190, b: 120, h:  94, wand: "#e2e7ea", dach: "#7a5b4a" },
+  { x: 1510, b: 162, h: 120, wand: "#ecdfc6", dach: "#9d5340", kamin: true },
+  { x: 1860, b: 122, h:  96, wand: "#dfe6ea", dach: "#6b5747" },
+  { x: 2160, b: 146, h: 108, wand: "#b98a5c", dach: "#5f4636", scheune: true },
+];
+const DORFBAUM = [210, 480, 770, 1060, 1360, 1690, 2000, 2300];
+const DORF_ENDE = 2600;                    // dahinter wird nichts mehr gezeichnet
+
+function dorfHaus(d, alt) {
+  const s = SCALE, X = sx(d.x);
+  const b = d.b * s, h = d.h * s;
+  const links = X - b / 2;
+  // Der Boden unter dem Grundriss ist selten waagerecht. Der Fußboden liegt
+  // deshalb auf der höchsten Stelle darunter, und der Sockel füllt bis zum
+  // Gelände auf – so steht das Haus überall auf, ohne irgendwo zu schweben.
+  const x0 = d.x - d.b / 2, x1 = d.x + d.b / 2;
+  const boden = [];
+  for (let x = x0; x <= x1 + 0.1; x += 6) boden.push([x, terrainY(x)]);
+  let flur = -Infinity;
+  for (const [, g] of boden) flur = Math.max(flur, g);
+  const Y = sy(flur);
+  // Schlagschatten nach links, bevor Sockel und Wand darüberkommen. Auf den
+  // Berg geklippt, sonst schwebt er an einer Geländekante im Himmel.
+  ctx.save();
+  if (TERRAIN_BODY) ctx.clip(TERRAIN_BODY);
+  schattenBand(d.x, d.b / 2, d.h + d.b * 0.42, 0.3);     // Wand plus Dachhöhe
+  ctx.restore();
+  ctx.fillStyle = "#9a958c";                          // Sockel aus Bruchstein
+  ctx.beginPath();
+  ctx.moveTo(links, Y);
+  for (const [x, g] of boden) ctx.lineTo(sx(x), sy(g) + 4 * s);
+  ctx.lineTo(links + b, Y);
+  ctx.closePath(); ctx.fill();
+  if (flur - Math.min(...boden.map(p => p[1])) > 4) {  // Kante nur, wenn sichtbar
+    ctx.strokeStyle = "rgba(60,54,48,.45)"; ctx.lineWidth = 1.6 * s;
+    ctx.beginPath(); ctx.moveTo(links, Y); ctx.lineTo(links + b, Y); ctx.stroke();
+  }
+  ctx.fillStyle = d.wand;
+  ctx.fillRect(links, Y - h, b, h + 1);
+  // Sonne steht rechts: linke Wandseite liegt im Schatten
+  ctx.fillStyle = "rgba(30,34,50,.16)";
+  ctx.fillRect(links, Y - h, b * 0.3, h + 1);
+  // Satteldach mit Überstand, die abgewandte Hälfte dunkler
+  ctx.fillStyle = d.dach;
+  ctx.beginPath();
+  ctx.moveTo(links - 7 * s, Y - h);
+  ctx.lineTo(X, Y - h - d.b * 0.42 * s);
+  ctx.lineTo(links + b + 7 * s, Y - h);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "rgba(28,30,44,.22)";
+  ctx.beginPath();
+  ctx.moveTo(links - 7 * s, Y - h);
+  ctx.lineTo(X, Y - h - d.b * 0.42 * s);
+  ctx.lineTo(X, Y - h);
+  ctx.closePath(); ctx.fill();
+  if (d.kamin) {
+    ctx.fillRect(links + b * 0.7, Y - h - d.b * 0.34 * s, 9 * s, 16 * s);
+    // Rauch: drei Ballen, die aufsteigen und verwehen
+    const t = performance.now() / 1000;
+    for (let k = 0; k < 3; k++) {
+      const p = (t * 0.32 + k / 3) % 1;
+      ctx.fillStyle = rgba([228, 232, 238], 0.32 * (1 - p));
+      ctx.beginPath();
+      ctx.arc(links + b * 0.73 + p * 26 * s, Y - h - d.b * 0.36 * s - p * 46 * s,
+              (3 + p * 9) * s, 0, 7);
+      ctx.fill();
+    }
+  }
+  // Öffnungen: abends leuchten sie
+  const licht = Math.min(0.9, Math.max(0, alt - 0.14) * 2.4);
+  const fen = licht > 0.02 ? rgba([255, 216, 138], licht) : "rgba(52,58,72,.62)";
+  if (d.scheune) {                                    // Scheune: großes Tor
+    ctx.fillStyle = "rgba(52,42,32,.7)";
+    ctx.fillRect(X - b * 0.17, Y - h * 0.62, b * 0.34, h * 0.62);
+    ctx.strokeStyle = "rgba(90,70,50,.8)"; ctx.lineWidth = 2 * s;
+    ctx.beginPath();
+    ctx.moveTo(X, Y - h * 0.62); ctx.lineTo(X, Y);
+    ctx.moveTo(X - b * 0.17, Y - h * 0.5); ctx.lineTo(X + b * 0.17, Y - h * 0.5);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = fen;
+    ctx.fillRect(links + b * 0.14, Y - h * 0.78, b * 0.22, h * 0.26);
+    ctx.fillRect(links + b * 0.64, Y - h * 0.78, b * 0.22, h * 0.26);
+    ctx.fillStyle = "rgba(74,52,36,.85)";             // Tür
+    ctx.fillRect(links + b * 0.4, Y - h * 0.42, b * 0.2, h * 0.42);
+  }
+}
+
+function drawDorf(alt) {
+  const xl = wxAt(-260), xr = wxAt(W + 260);
+  if (xr < -560 || xl > DORF_ENDE) return;            // längst vorbei
+  for (const d of DORF) {
+    if (d.x < xl - 220 || d.x > xr + 220) continue;
+    // Am Steilhang steht kein Haus. Mit dem Sockel darf es etwas schräger
+    // sein als vorher, weil der Höhenunterschied jetzt aufgefüllt wird.
+    if (Math.abs(slopeAt(d.x)) > 0.45) continue;
+    dorfHaus(d, alt);
+  }
+  // Bäume dazwischen, gleiche Form wie im Hintergrund, nur viel größer
+  for (const bx of DORFBAUM) {
+    if (bx < xl - 90 || bx > xr + 90) continue;
+    const s = SCALE * 4.1, X = sx(bx), Y = sy(terrainY(bx));
+    ctx.save();                                        // Schatten nach links
+    if (TERRAIN_BODY) ctx.clip(TERRAIN_BODY);
+    const um = s / SCALE;                                // Formeinheit -> Welt
+    schattenBand(bx, 11 * um, 40 * um, 0.3);             // Baum ist 40 Einheiten hoch
+    ctx.restore();
+    ctx.fillStyle = "#3f6b46";
+    ctx.fillRect(X - 2 * s, Y - 12 * s, 4 * s, 12 * s);
+    ctx.beginPath();
+    ctx.moveTo(X, Y - 40 * s);
+    ctx.lineTo(X + 5 * s, Y - 18 * s); ctx.lineTo(X + 3 * s, Y - 18 * s);
+    ctx.lineTo(X + 11 * s, Y - 2 * s); ctx.lineTo(X - 11 * s, Y - 2 * s);
+    ctx.lineTo(X - 3 * s, Y - 18 * s); ctx.lineTo(X - 5 * s, Y - 18 * s);
+    ctx.closePath(); ctx.fill();
+  }
+  // Lattenzaun am Ortsrand
+  const zaun = (von, bis) => {
+    if (bis < xl || von > xr) return;
+    ctx.strokeStyle = "#9c7b52"; ctx.lineWidth = 2.4 * SCALE; ctx.lineCap = "round";
+    ctx.beginPath();
+    for (let x = von; x <= bis; x += 26) {
+      const Y = sy(terrainY(x));
+      ctx.moveTo(sx(x), Y); ctx.lineTo(sx(x), Y - 22 * SCALE);
+    }
+    for (const hoehe of [8, 17]) {
+      ctx.moveTo(sx(von), sy(terrainY(von)) - hoehe * SCALE);
+      for (let x = von; x <= bis; x += 26)
+        ctx.lineTo(sx(x), sy(terrainY(x)) - hoehe * SCALE);
+    }
+    ctx.stroke();
+  };
+  zaun(420, 580);
+  zaun(1010, 1160);
+  zaun(1980, 2110);
+}
+
+function drawBridges() {
+  const xl = wxAt(-40), xr = wxAt(W + 40);
+  for (const r of RAVINES) {
+    if (!r.bruecke || r.bx2 < xl || r.bx1 > xr) continue;
+    const s = SCALE;
+    // Das Deck ist an den Enden gekrümmt, also als Polygonzug zeichnen.
+    // n[i] ist die Normale – Planken und Pfosten stehen senkrecht dazu.
+    // Ein Stützpunkt je Planke – hält den Plankenabstand wie gehabt bei ~11 px.
+    const N = Math.max(12, Math.min(80,
+      Math.round(Math.abs(sx(r.bx2) - sx(r.bx1)) / (11 * s))));
+    const p = [], n = [];
+    for (let i = 0; i <= N; i++) {
+      const wx = r.bx1 + (r.bx2 - r.bx1) * i / N, b = deckAt(r, wx);
+      const nl = Math.hypot(b.s, 1);
+      p.push([sx(wx), sy(b.y)]);
+      n.push([b.s / nl, 1 / nl]);        // Bildschirm-Y zeigt nach unten
+    }
+    const line = (i, a, bb, w, col) => {
+      ctx.strokeStyle = col; ctx.lineWidth = w * s;
+      ctx.beginPath();
+      ctx.moveTo(p[i][0] + n[i][0] * a * s, p[i][1] + n[i][1] * a * s);
+      ctx.lineTo(p[i][0] + n[i][0] * bb * s, p[i][1] + n[i][1] * bb * s);
+      ctx.stroke();
+    };
+    const along = (off, w, col) => {
+      ctx.strokeStyle = col; ctx.lineWidth = w * s;
+      ctx.beginPath();
+      for (let i = 0; i <= N; i++) {
+        const X = p[i][0] + n[i][0] * off * s, Y = p[i][1] + n[i][1] * off * s;
+        i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y);
+      }
+      ctx.stroke();
+    };
+
+    const at = (k, m) => Math.round(N * k / m);
+    for (let k = 1; k < 6; k++) line(at(k, 6), 0, 13, 2, "rgba(60,45,32,.85)"); // Pfosten
+    along(2.5, 7, "#8a6b45");                                                  // Deck
+    for (let i = 1; i < N; i++) line(i, -1, 6, 1.4, "rgba(45,32,20,.55)");     // Planken
+    along(-13, 2.5, "#6d5334");                                                // Handlauf
+    for (let k = 0; k <= 5; k++) line(at(k, 5), -13, 0, 2.5, "#6d5334");       // Streben
+  }
+}
+
+// Am Fuß jeder Steilwand drei Pfeile: hier hilft nur der Boost
+function drawWallMarks() {
+  const xl = wxAt(-40), xr = wxAt(W + 40);
+  for (const w of WALLS) {
+    if (w.x0 + w.L < xl || w.x0 > xr) continue;
+    // Fuß der Steilstelle suchen: dort, wo es erstmals über 45° geht
+    let xs = w.x0 + w.L * 0.3;
+    for (let x = w.x0; x < w.x0 + w.L; x += 8) {
+      if (slopeAt(x) > 1) { xs = x; break; }
+    }
+    const mx = xs - 55;
+    const px = sx(mx), py = sy(terrainY(mx));
+    const pulse = 0.5 + 0.5 * Math.sin(G.time * 5);
+    ctx.save();
+    ctx.translate(px, py - 34 * SCALE);
+    ctx.scale(SCALE, SCALE);
+    ctx.strokeStyle = "rgba(120,220,255," + pulse.toFixed(2) + ")";
+    ctx.lineWidth = 4; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    for (let k = 0; k < 3; k++) {
+      const oy = -k * 12;
+      ctx.beginPath();
+      ctx.moveTo(-11, oy); ctx.lineTo(0, oy - 9); ctx.lineTo(11, oy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawCans() {
+  const k0 = Math.max(0, Math.floor((wxAt(0) - CFG.CAN_SPACING) / CFG.CAN_SPACING));
+  for (let k = k0; k <= k0 + 6; k++) {
+    if (cans.get(k)) continue;
+    const c = canPos(k);
+    const px = sx(c.x), py = sy(c.y);
+    if (px < -60 || px > W + 60) continue;
+    const bob = Math.sin(G.time * 3 + k) * 3 * SCALE;
+    ctx.save();
+    ctx.translate(px, py + bob);
+    ctx.scale(SCALE, SCALE);
+    ctx.fillStyle = "rgba(0,0,0,.25)";
+    ctx.beginPath(); ctx.ellipse(0, 20, 14, 4, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "#e63946";
+    ctx.beginPath(); ctx.roundRect(-11, -16, 22, 32, 4); ctx.fill();
+    ctx.fillStyle = "#ffd9a0"; ctx.fillRect(-7, -8, 14, 5);      // Etikett
+    ctx.fillStyle = "#b52c38"; ctx.fillRect(-11, 2, 22, 4);
+    ctx.fillStyle = "#2b2b2b"; ctx.fillRect(-4, -21, 8, 6);      // Deckel
+    ctx.strokeStyle = "#2b2b2b"; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(9, -14); ctx.lineTo(15, -19); ctx.stroke();  // Ausgießer
+    ctx.restore();
+  }
+}
+
+function drawWheel(p) {
+  const px = sx(p.x), py = sy(p.y), r = p.r * SCALE;
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(p.spin);            // spin ist bereits der Winkel in Radiant
+  ctx.fillStyle = "#1b1b20";
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
+  ctx.strokeStyle = "#3a3a44"; ctx.lineWidth = 2 * SCALE;
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.62, 0, 7); ctx.stroke();
+  // 3 Speichen: bei bis zu ~9 Umdrehungen/s bleibt die Speichenfrequenz unter
+  // der halben Bildrate, sonst scheint sich das Rad rückwärts zu drehen.
+  ctx.strokeStyle = "#8a8f9c"; ctx.lineWidth = 2 * SCALE;
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    ctx.beginPath(); ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(a) * r * 0.6, Math.sin(a) * r * 0.6); ctx.stroke();
+  }
+  ctx.fillStyle = "#c8ccd6";
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.16, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+function drawBike() {
+  const mx = (rear.x + front.x) / 2, my = (rear.y + front.y) / 2;
+  const ang = Math.atan2(front.y - rear.y, front.x - rear.x);
+  const hb = CFG.WHEELBASE / 2;
+
+  // Schatten
+  const gy = groundUnder(mx, my);
+  ctx.globalAlpha = Math.max(0, 0.3 - (my - gy) / 500);
+  ctx.fillStyle = "#000";
+  ctx.beginPath(); ctx.ellipse(sx(mx), sy(gy), 34 * SCALE, 7 * SCALE, 0, 0, 7); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  drawWheel(rear); drawWheel(front);
+
+  ctx.save();
+  ctx.translate(sx(mx), sy(my));
+  ctx.rotate(-ang);                 // lokal: +x vorwärts, -y oben
+  ctx.scale(SCALE, SCALE);
+
+  // Einfedern senkt den Aufbau zu den Rädern hin; federt vorn mehr ein als
+  // hinten, taucht die Nase. Die Naben bleiben, wo die Physik sie hat.
+  const sr = rear.sag, sf = front.sag;
+  const sm = (sr + sf) / 2, nick = Math.atan2(sf - sr, 2 * hb);
+  const anbau = (x, y) => {          // Punkt am Aufbau -> Nabensystem
+    const c = Math.cos(nick), s = Math.sin(nick);
+    return [x * c - y * s, x * s + y * c + sm];
+  };
+  const hint = anbau(-hb + 18, -9), vorn = anbau(hb - 3, -8);
+  ctx.strokeStyle = "#3a4150"; ctx.lineWidth = 4; ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-hb, 0); ctx.lineTo(hint[0], hint[1]);      // Schwinge
+  ctx.moveTo(hb, 0);  ctx.lineTo(vorn[0], vorn[1]);      // Gabelholm
+  ctx.stroke();
+  ctx.strokeStyle = "#8a93a6"; ctx.lineWidth = 2.2;      // Federbein als Wendel
+  ctx.beginPath();
+  for (let i = 0; i <= 6; i++) {
+    const t = i / 6;
+    const x = -hb + 4 + (hint[0] + hb - 4) * t, y = hint[1] * t;
+    const q = (i % 2 ? 1 : -1) * 2.6;
+    i ? ctx.lineTo(x + q, y + q * 0.4) : ctx.moveTo(x, y);
+  }
+  ctx.stroke();
+
+  ctx.translate(0, sm);              // ab hier taucht der Aufbau mit ein
+  ctx.rotate(nick);
+
+  // Boost-Flamme hinter dem Hinterrad
+  if (G.boosting) {
+    const L = 34 * (1 + Math.sin(G.time * 42) * 0.2);
+    const fg = ctx.createLinearGradient(-36, 0, -36 - L, 0);
+    fg.addColorStop(0, "rgba(255,255,255,.95)");
+    fg.addColorStop(0.35, "rgba(120,220,255,.8)");
+    fg.addColorStop(1, "rgba(139,125,255,0)");
+    ctx.fillStyle = fg;
+    ctx.beginPath();
+    ctx.moveTo(-36, -13); ctx.lineTo(-36 - L, -6); ctx.lineTo(-36, 1); ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.9)";
+    ctx.beginPath();
+    ctx.moveTo(-36, -9); ctx.lineTo(-36 - L * 0.45, -6); ctx.lineTo(-36, -3); ctx.closePath();
+    ctx.fill();
+  }
+
+  // Rahmen
+  ctx.strokeStyle = "#2f3644"; ctx.lineWidth = 5; ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-hb, 0); ctx.lineTo(-8, -14); ctx.lineTo(10, -12);
+  ctx.moveTo(-8, -14); ctx.lineTo(0, 0);
+  ctx.moveTo(10, -12); ctx.lineTo(hb, 0);
+  ctx.stroke();
+
+  // Motorblock
+  ctx.fillStyle = "#5a6478";
+  ctx.beginPath(); ctx.roundRect(-14, -12, 22, 13, 3); ctx.fill();
+
+  // Tank + Sitz
+  ctx.fillStyle = "#e63946";
+  ctx.beginPath(); ctx.moveTo(-16, -16); ctx.lineTo(4, -20); ctx.lineTo(12, -14);
+  ctx.lineTo(-6, -12); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#22252e";
+  ctx.beginPath(); ctx.roundRect(-26, -19, 14, 5, 2); ctx.fill();
+
+  // Lenker
+  ctx.strokeStyle = "#2f3644"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(12, -14); ctx.lineTo(20, -26); ctx.stroke();
+  ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(21, -27, 3, 0, 7); ctx.fill();
+
+  // Fahrer
+  ctx.strokeStyle = "#2b6cb0"; ctx.lineWidth = 7; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(-16, -20); ctx.lineTo(-3, -36); ctx.stroke();   // Rumpf
+  ctx.strokeStyle = "#1a4e86"; ctx.lineWidth = 5.5;
+  ctx.beginPath(); ctx.moveTo(-14, -22); ctx.lineTo(-4, -14); ctx.lineTo(-2, -6); ctx.stroke(); // Bein
+  ctx.beginPath(); ctx.moveTo(-4, -34); ctx.lineTo(18, -25); ctx.stroke();    // Arm
+
+  // Kopf: Foto des gewählten Fahrers, rund beschnitten. HY ist reine Optik –
+  // der Crash hängt weiter an CFG.HEAD_H, damit sich nichts am Spiel ändert.
+  const ch = CHARS[charIdx];
+  const HR = 19, HY = CFG.HEAD_H + 11;
+  if (ch && ch.ok) {
+    const cr = faceCrop(ch.img);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, -HY, HR, 0, 7); ctx.clip();
+    ctx.drawImage(ch.img, cr.x, cr.y, cr.s, cr.s, -HR, -HY - HR, HR * 2, HR * 2);
+    ctx.restore();
+    ctx.strokeStyle = "#ffd166"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, -HY, HR, 0, 7); ctx.stroke();
+  } else {
+    ctx.fillStyle = "#ffd166";
+    ctx.beginPath(); ctx.arc(0, -HY, HR * 0.8, 0, 7); ctx.fill();             // Helm
+    ctx.fillStyle = "#2f3644";
+    ctx.beginPath(); ctx.arc(0, -HY, HR * 0.8, -0.5, 1.3); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* ---- Wetter zeichnen ---------------------------------------------------
+   Regen und Böen laufen in Bildschirmkoordinaten (0..1), damit sie unabhängig
+   von Kamera und Fenstergröße gleich dicht bleiben. */
+const RAIN = Array.from({ length: 300 }, () => ({
+  x: Math.random(), y: Math.random(), v: 0.75 + Math.random() * 0.6, l: 0.6 + Math.random() * 0.7,
+}));
+const GUST = Array.from({ length: 40 }, () => ({
+  x: Math.random(), y: Math.random(), v: 0.5 + Math.random() * 0.9, l: 0.04 + Math.random() * 0.13,
+}));
+let weaT = 0;
+
+function drawTornado() {
+  if (WEA.kind !== "tornado" || WEA.p < 0.02) return;
+  const gx = sx(WEA.tx);
+  if (gx < -700 || gx > W + 700) return;
+  const gy = sy(terrainY(WEA.tx)), top = -60, N = 26;
+  const wob = t => Math.sin(t * 3.1 + WEA.spin * 1.7) * 34 * t * SCALE;
+  const wid = t => (14 + 240 * t * t) * SCALE;
+  ctx.save();
+  ctx.globalAlpha = 0.72 * WEA.p;
+  // Staubwolke am Fuß
+  const fg = ctx.createRadialGradient(sx(WEA.tx), gy, 4, sx(WEA.tx), gy, 130 * SCALE);
+  fg.addColorStop(0, "rgba(96,104,122,.75)");
+  fg.addColorStop(1, "rgba(96,104,122,0)");
+  ctx.fillStyle = fg;
+  ctx.beginPath(); ctx.ellipse(sx(WEA.tx), gy, 130 * SCALE, 46 * SCALE, 0, 0, 7); ctx.fill();
+  const g = ctx.createLinearGradient(0, top, 0, gy);
+  g.addColorStop(0, "rgba(148,158,178,.95)");
+  g.addColorStop(1, "rgba(56,64,82,.7)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const t = i / N, y = gy + (top - gy) * t, X = gx + wob(t) - wid(t);
+    i ? ctx.lineTo(X, y) : ctx.moveTo(X, y);
+  }
+  for (let i = N; i >= 0; i--) {
+    const t = i / N;
+    ctx.lineTo(gx + wob(t) + wid(t), gy + (top - gy) * t);
+  }
+  ctx.closePath(); ctx.fill();
+  // Spiralen als Drehrichtung
+  ctx.strokeStyle = "rgba(232,240,252,.4)"; ctx.lineWidth = 2 * SCALE;
+  for (let s = 0; s < 4; s++) {
+    ctx.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, y = gy + (top - gy) * t;
+      const X = gx + wob(t) + Math.cos(WEA.spin * 2.6 + s * 1.57 + t * 5.4) * wid(t);
+      i ? ctx.lineTo(X, y) : ctx.moveTo(X, y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function strokePts(pts) {
+  ctx.beginPath();
+  for (let i = 0; i < pts.length; i++) {
+    const X = sx(pts[i][0]), Y = sy(pts[i][1]);
+    i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y);
+  }
+  ctx.stroke();
+}
+
+// Vorwarnung: Zielring am Boden, Lichtsäule und Countdown-Bogen
+function drawBoltWarn() {
+  if (WEA.warnLeft <= 0) return;
+  const wx = WEA.warnX;
+  const x = Math.max(26, Math.min(W - 26, sx(wx))), y = sy(groundUnder(wx, 1e9));
+  const off = Math.abs(sx(wx) - x) > 1;
+  const t = 1 - WEA.warnLeft / CFG.WEA_BOLT_WARN;
+  const puls = 0.5 + 0.5 * Math.sin(WEA.warnLeft * 30);
+  ctx.save();
+  ctx.textAlign = "center";
+  if (!off) {
+    // Lichtkegel statt Balken – nach oben schmal, damit es nicht wie ein
+    // Rechteck über der Landschaft klebt
+    const oben = y - 460 * SCALE;
+    const g = ctx.createLinearGradient(x, oben, x, y);
+    g.addColorStop(0, "rgba(255,226,130,0)");
+    g.addColorStop(1, "rgba(255,214,90," + (0.12 + 0.18 * puls) + ")");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x - 7 * SCALE, oben); ctx.lineTo(x + 7 * SCALE, oben);
+    ctx.lineTo(x + 46 * SCALE, y); ctx.lineTo(x - 46 * SCALE, y);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "rgba(255,214,90," + (0.55 + 0.45 * puls) + ")";
+    ctx.lineWidth = 3 * SCALE;
+    const r = (62 - 30 * t) * SCALE;
+    ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.4, 0, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(x, y, r * 0.52, r * 0.21, 0, -1.57, -1.57 + t * 6.283); ctx.stroke();
+  }
+  ctx.font = "700 " + Math.round(28 * SCALE) + "px system-ui";
+  ctx.fillStyle = "rgba(255,226,120," + (0.6 + 0.4 * puls) + ")";
+  ctx.fillText("⚡", x, off ? H * 0.3 : y - 48 * SCALE);
+  ctx.restore();
+}
+
+function drawWeather() {
+  const now = performance.now() / 1000;
+  const dt = Math.min(0.05, weaT ? now - weaT : 0.016);
+  weaT = now;
+  const p = WEA.p;
+  const wind = windAcc(!rear.grounded && !front.grounded) / CFG.WEA_WIND;
+  ctx.save();
+
+  if (p > 0.01) {
+    const dunkel = { regen: 0.26, gewitter: 0.42, sturm: 0.22, tornado: 0.34 }[WEA.kind] || 0;
+    ctx.fillStyle = "rgba(12,18,34," + (dunkel * p) + ")";
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  const regen = (WEA.kind === "regen" ? 1 : WEA.kind === "gewitter" ? 1.15 : 0) * p;
+  if (regen > 0.01) {
+    for (const d of RAIN) {
+      d.y += d.v * dt * 1.5;
+      d.x += wind * d.v * dt * 0.4;
+      if (d.y > 1.05) { d.y -= 1.1; d.x = Math.random(); }
+      d.x = (d.x % 1 + 1) % 1;
+    }
+    ctx.strokeStyle = "rgba(198,222,250,.5)";
+    ctx.lineWidth = Math.max(1, 1.1 * SCALE);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    const n = Math.round(RAIN.length * Math.min(1, regen));
+    for (let i = 0; i < n; i++) {
+      const d = RAIN[i], X = d.x * W, Y = d.y * H, L = 15 * d.l * d.v * SCALE;
+      ctx.moveTo(X, Y); ctx.lineTo(X + wind * L * 1.2, Y + L);
+    }
+    ctx.stroke();
+  }
+
+  const boe = (WEA.kind === "sturm" || WEA.kind === "tornado") ? p : 0;
+  if (boe > 0.01) {
+    const dir = wind < 0 ? -1 : 1;
+    for (const g of GUST) {
+      g.x += wind * g.v * dt * 0.6;
+      g.x = (g.x % 1 + 1) % 1;
+    }
+    ctx.strokeStyle = "rgba(255,255,255," + (0.18 * boe) + ")";
+    ctx.lineWidth = Math.max(1, 2 * SCALE);
+    ctx.beginPath();
+    for (const g of GUST) {
+      const X = g.x * W, L = g.l * W * (0.4 + Math.abs(wind));
+      ctx.moveTo(X, g.y * H); ctx.lineTo(X + L * dir, g.y * H);
+    }
+    ctx.stroke();
+  }
+
+  drawBoltWarn();
+  if (WEA.bolt) {
+    const a = Math.min(1, WEA.bolt.t / 0.16);
+    ctx.save();
+    ctx.lineJoin = ctx.lineCap = "round";
+    ctx.strokeStyle = "rgba(255,246,190," + (0.45 * a) + ")";
+    ctx.lineWidth = 12 * SCALE;
+    strokePts(WEA.bolt.pts); strokePts(WEA.bolt.ast);
+    ctx.strokeStyle = "rgba(255,255,255," + a + ")";
+    ctx.lineWidth = 3.4 * SCALE; strokePts(WEA.bolt.pts);
+    ctx.lineWidth = 2 * SCALE; strokePts(WEA.bolt.ast);
+    ctx.restore();
+  }
+  if (WEA.flash > 0.01) {
+    ctx.fillStyle = "rgba(255,255,255," + (WEA.flash * 0.5) + ")";
+    ctx.fillRect(0, 0, W, H);
+  }
+  ctx.restore();
+}
+
+function draw() {
+  const alt = Math.min(1, Math.max(0, cam.y) / 9000);
+  drawSky(alt);
+  drawDeepSky();           // Galaxien und Schwarze Löcher, ganz hinten
+  drawIcePeaks();          // hinter allem: Horizont der Eiszone
+  drawClouds(alt);
+  // Ferne Kette: nur Wald, klein und blass. Nähere Kette: größere Bäume und
+  // Häuser – die dunklere Farbe holt sie optisch nach vorn.
+  drawRidge(0.22, 420, 300, mix([120, 150, 185], [30, 38, 72], alt));
+  // Häuser auch auf der fernen Kette: die nähere sinkt schon nach ~45 m aus dem
+  // Bild, die ferne trägt das Dorf bis weit in den Aufstieg hinein.
+  drawProps(alt, 0.22, 420, 300,
+            { step: 78, dens: 0.5, sz: 0.62, seed: 11.3,
+              baum: [96, 124, 158], wand: [150, 160, 178], dach: [118, 112, 122] });
+  // Dunst liegt zwischen den Ketten, nicht über beiden: sonst verliert auch der
+  // Wald der vorderen Kette seinen Kontrast und wird zu grauem Brei.
+  drawHaze(alt);
+  drawRidge(0.45, 300, 120, mix([92, 122, 158], [22, 28, 58], alt));
+  drawProps(alt, 0.45, 300, 120,
+            { step: 96, dens: 0.62, sz: 1, hsz: 1.9, seed: 4.7, laub: true,
+              baum: [58, 86, 114], wand: [128, 134, 142], dach: [92, 76, 78] });
+  drawKirche(0.45, 300, 120, alt);
+  drawVoegel();           // fliegen vor den Ketten, sonst verschluckt sie der Berg
+  drawTerrain();
+  drawDorf(alt);          // Startdorf steht auf dem Gelände, hinter dem Bike
+  drawLeute(false);       // Leute laufen vor den Häusern, nicht dahinter
+  drawLava();             // in der Kerbe, also vor dem Gelände
+  drawWallMarks();
+  drawJumps();
+  drawGeysers();
+  drawBridges();
+  drawCans();
+  drawTornado();          // vor dem Gelände, aber hinter dem Bike
+  drawWeltall(false);     // Himmelskörper auf der hinteren Bahnhälfte
+  drawBike();
+  drawWeltall(true);      // und die, die gerade vorbeiziehen
+  drawIceDust();          // Kristalle in der Luft, direkt vor der Kamera
+  drawWeather();
+}
+
+/* =========================================================================
+   HUD / OVERLAY
+   ========================================================================= */
+const el = id => document.getElementById(id);
+const fuelFill = el("fuelFill"), boostFill = el("boostFill"), toastEl = el("toast");
+let toastTimer = 0;
+
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1100);
+}
+
+function updateHUD() {
+  const mx = (rear.x + front.x) / 2;
+  const h = Math.max(0, G.maxY / CFG.PPM);
+  const spd = Math.abs((rear.x - rear.px) * 120) / CFG.PPM * 3.6;
+  el("hHeight").innerHTML = Math.floor(h) + '<small> m</small>';
+  el("hScore").textContent = Math.floor(G.score);
+  el("hBest").textContent = G.best;
+  el("hSpeed").textContent = Math.round(spd);
+  el("hLives").style.display = G.lives > 0 ? "" : "none";
+  fuelFill.style.width = G.fuel + "%";
+  fuelFill.classList.toggle("low", G.fuel < 25);
+  boostFill.style.width = G.boost + "%";
+  boostBox.classList.toggle("full", G.boost > 99);
+
+  const wk = WKIND[WEA.kind];
+  el("weaCard").style.display = wk ? "" : "none";
+  if (wk) el("weaName").textContent = wk.icon + " " + wk.name;
+  if (DBG.on) el("dState").textContent = dbgStatus();
+  void mx;
+}
+
+function showOverlay(isOver) {
+  el("overlay").classList.remove("hidden");
+  el("pads").classList.add("hidden");
+  boostBox.classList.add("hidden");
+  el("stats").classList.toggle("show", !!isOver);
+  document.querySelector(".tips").style.display = isOver ? "none" : "";   // nach dem Crash unnötig
+  if (isOver) {
+    el("title").innerHTML = G.reason;
+    el("sub").textContent = G.geschafft
+      ? CHARS[charIdx].name + " hat den Gipfel auf 1000 m genommen und ist ins All "
+        + "abgesprungen. Höher geht dieser Berg nicht."
+      : CHARS[charIdx].name +
+        " braucht mehr Anlauf aus dem Tal – und in der Luft die Nase flach halten.";
+    el("panel").classList.toggle("geschafft", !!G.geschafft);
+    el("sHeight").innerHTML = Math.floor(G.maxY / CFG.PPM) + '<small> m</small>';
+    el("sScore").textContent = Math.floor(G.score);
+    el("sCoins").textContent = "+" + (G.earned || 0);
+    el("sBest").textContent = G.best;
+    el("btn").textContent = "Nochmal";
+  } else {
+    el("title").innerHTML = 'Hill Climb <em>Bike</em>';
+    el("btn").textContent = "Losfahren";
+  }
+  renderCard();          // Coinstand und Upgrade-Knopf aktualisieren
+}
+
+function start() {
+  reset();
+  G.state = "play";
+  el("overlay").classList.add("hidden");
+  el("pads").classList.remove("hidden");
+  boostBox.classList.remove("hidden");
+}
+
+/* =========================================================================
+   INPUT
+   ========================================================================= */
+const IN = { gas: false, brake: false, boost: false };
+const padL = el("padL"), padR = el("padR"), boostBox = el("boostBox");
+
+function bindPad(pad, key) {
+  const on = e => { e.preventDefault(); IN[key] = true; pad.classList.add("on");
+                    if (pad.setPointerCapture && e.pointerId != null) { try { pad.setPointerCapture(e.pointerId); } catch (_) {} } };
+  const off = e => { IN[key] = false; pad.classList.remove("on"); };
+  pad.addEventListener("pointerdown", on);
+  pad.addEventListener("pointerup", off);
+  pad.addEventListener("pointercancel", off);
+  pad.addEventListener("pointerleave", off);
+  pad.addEventListener("contextmenu", e => e.preventDefault());
+}
+bindPad(padL, "brake");
+bindPad(padR, "gas");
+bindPad(boostBox, "boost");
+
+/* =========================================================================
+   TESTMODUS – Taste +. Setzt jede Wetterlage direkt, löst Blitze aus und
+   springt an die Stellen, die man sonst erst erfahren muss. Die Tasten wirken
+   nur, solange das Feld offen ist.
+   ========================================================================= */
+const DBG = { on: false, god: false, hold: false, forced: "", tank: false };
+
+function setWea(k) {
+  DBG.hold = true; DBG.forced = k;
+  if (k === "klar") {
+    WEA.kind = "klar"; WEA.left = 0; WEA.p = 0; WEA.bolt = null; WEA.warnLeft = 0;
+    WEA.next = 1e9;
+  } else startWeather(k, 600);       // hält an, bis etwas anderes gewählt wird
+  syncDbg();
+}
+
+// Aktionen, die eine laufende Runde brauchen
+function needPlay() {
+  if (G.state === "play") return true;
+  toast("Erst losfahren");
+  return false;
+}
+
+// Blitz mit Vorwarnung auf eine Stelle relativ zum Fahrer
+function zapAt(off) {
+  if (!needPlay()) return;
+  if (WEA.kind !== "gewitter") setWea("gewitter");
+  WEA.p = Math.max(WEA.p, 0.45);
+  WEA.warnX = bikeX() + off;
+  WEA.warnLeft = CFG.WEA_BOLT_WARN;
+}
+
+function tpTo(x) {
+  if (!needPlay()) return;
+  x = Math.max(120, Math.min(TEND - 400, x));
+  const y = groundUnder(x, 1e9) + CFG.WHEEL_R + 4;
+  rear.x = x; rear.y = y; rear.px = x; rear.py = y;
+  front.x = x + CFG.WHEELBASE; front.y = groundUnder(front.x, 1e9) + CFG.WHEEL_R + 4;
+  front.px = front.x; front.py = front.y;
+  body.px = body.x = 0; body.py = body.y = 0; seatBody();
+  rear.grounded = front.grounded = false;
+  G.airTime = 0; G.spinAcc = 0; G.touch = 0;
+  G.lastAng = Math.atan2(front.y - rear.y, front.x - rear.x);
+  G.maxY = Math.max(G.maxY, y);      // kein geschenkter Punkteschub durch den Sprung
+  federReset();
+  cam.x = x; cam.y = y;
+}
+
+// Direkt in den schwerelosen Teil: knapp über den Gipfel und mit Schwung die
+// Rampe entlang. Über tpAbove() ginge das nicht – oberhalb der Gipfelhöhe gibt
+// es kein Gelände mehr, an das man sich setzen könnte.
+function tpWeltall() {
+  if (!needPlay()) return;
+  if (!FINALE) { toast("kein Gipfel auf dieser Strecke"); return; }
+  tpTo(FINALE.xGipfel - 30);
+  const w = Math.atan(CFG.FINAL_SLOPE1), v = 13;  // Kante, px pro Substep
+  const vx = Math.cos(w) * v, vy = Math.sin(w) * v;
+  for (const p of PARTS) {
+    p.y += 70;
+    p.px = p.x - vx; p.py = p.y - vy;
+  }
+  rear.grounded = front.grounded = false;
+  G.maxY = Math.max(G.maxY, (rear.y + front.y) / 2);
+  G.zone = ZONES.length;
+  cam.x = bikeX(); cam.y = (rear.y + front.y) / 2;
+  toast("🚀 Absprung · " + Math.round(CFG.GIPFEL / CFG.PPM) + " m");
+}
+
+// nächste Stelle aus der Liste, sonst die erste
+function tpNext(list) {
+  if (!list.length) { toast("nichts gefunden"); return; }
+  const x = bikeX();
+  tpTo(list.find(v => v > x + 200) ?? list[0]);
+}
+
+// Erste Stelle der ganzen Strecke, die über dieser Welthöhe liegt – bewusst
+// vom Anfang aus gesucht und nicht ab dem Bike. Sonst käme man aus einem
+// höheren Gebiet nie wieder in ein tieferes zurück, weil dort alles vor einem
+// schon über der gesuchten Höhe liegt.
+function tpAbove(hoehe, fehler) {
+  if (!needPlay()) return null;
+  for (let x = 400; x < TEND - 400; x += 40)
+    if (terrainY(x) > hoehe) { tpTo(x); return x; }
+  toast(fehler);
+  return null;
+}
+
+const DBG_WEA = [["Klar", "1", "klar"], ["Regen", "2", "regen"], ["Gewitter", "3", "gewitter"],
+                 ["Sturm", "4", "sturm"], ["Tornado", "5", "tornado"]];
+const DBG_ACT = [
+  ["Blitz auf mich", "6", () => zapAt(0)],
+  ["Blitz daneben", "7", () => zapAt(300)],
+  ["Sprit voll", "8", () => { G.fuel = 100; }],
+  ["Boost voll", "9", () => { G.boost = 100; }],
+  ["Leben +1", "0", () => { G.lives++; }],
+  ["Unsterblich", "u", () => { DBG.god = !DBG.god; syncDbg(); }],
+  ["Sprit unendlich", "t", () => { DBG.tank = !DBG.tank; if (DBG.tank) G.fuel = 100; syncDbg(); }],
+  ["Wetter zufällig", "z", () => { DBG.hold = false; WEA.left = Math.min(WEA.left, 1); WEA.next = 2; syncDbg(); }],
+  ["Nächste Brücke", "b", () => tpNext(RAVINES.filter(r => r.bruecke && !r.lava)
+                                              .map(r => r.bx1 - 300))],
+  ["Nächstes Lavabecken", "l", () => tpNext(RAVINES.filter(r => r.lava)
+                                                   .map(r => r.x1 - 1000))],
+  ["Nächster Geysir", "g", () => tpNext(GEYSERS.map(g => g.x - 700))],
+  ["Nächste Steilwand", "n", () => tpNext(WALLS.map(w => w.x0 - 320))],
+  // mit Anlauf absetzen, sonst kommt man ohne Tempo an der Kante an
+  ["Nächste Rampe", "j", () => tpNext(JUMPS.map(j => j.x0 - 1400))],
+  ["99 Coins", "c", () => { coins = 99; saveProgress(); renderCard(); toast("🪙 99 Coins"); }],
+  ["Spielstand löschen", "x", () => {
+    coins = 0;
+    levels = CHARS.map(() => 1);
+    unlocked = CHARS.map((c, i) => i === 0);
+    charIdx = viewIdx = 0;
+    G.best = 0;
+    try { for (const k of ["best", "coins", "levels", "unlocked", "char"]) localStorage.removeItem("hcb." + k); } catch (e) {}
+    applyBuffs(); renderCard(); updateHUD();
+    toast("Spielstand gelöscht");
+  }],
+  ["Rauf in den Schnee", "s", () => tpAbove(CFG.SNOWLINE + 600, "kein Schnee in Reichweite")],
+  // Nicht direkt auf die Grenze, sondern 1200 px darüber: dort ist das Gebiet
+  // zu zwei Dritteln eingeblendet. Genau auf der Grenze sähe es noch aus wie
+  // das Gebiet darunter, und man denkt, der Knopf tut nichts.
+  // Nur die drei Gebiete, die auf dem Berg liegen. Der schwerelose Teil hat
+  // kein Gelände über sich und bekommt darum seinen eigenen Knopf.
+  ...ZONES.slice(0, 3).map((z, i) => [
+    "Rauf in die " + z.name, ["e", "v", "w"][i],
+    () => {
+      if (tpAbove(z.y + 1200, "keine " + z.name + " in Reichweite") === null) return;
+      G.zone = Math.max(G.zone, i + 1);       // Meldung nicht doppelt bringen
+      toast(z.icon + " " + z.name + " · " +
+            Math.round((rear.y + front.y) / 2 / CFG.PPM) + " m");
+    },
+  ]),
+  ["Zum Gipfel-Anlauf", "k", () => {
+    if (!needPlay()) return;
+    if (!FINALE) { toast("kein Gipfel auf dieser Strecke"); return; }
+    tpTo(FINALE.xBahn + 60);
+    G.zone = Math.max(G.zone, 3);
+    toast("🏔 Anlaufbahn · " + Math.round(FINALE.bahn / CFG.PPM) + " m");
+  }],
+  ["Absprung ins All", "p", tpWeltall],
+];
+
+const dbgEl = el("dbg");
+const dbgBtns = {};
+
+function buildDbg() {
+  const add = (tag, cls, txt, parent) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (txt) e.textContent = txt;
+    parent.appendChild(e);
+    return e;
+  };
+  const sect = (titel, liste) => {
+    add("h3", "", titel, dbgEl);
+    const g = add("div", "dGrid", "", dbgEl);
+    for (const [txt, key, arg] of liste) {
+      const b = add("button", "dBtn", txt, g);
+      add("kbd", "", key, b);
+      b.onmousedown = e => e.preventDefault();      // Fokus bleibt beim Spiel
+      b.onclick = () => (typeof arg === "function" ? arg() : setWea(arg));
+      dbgBtns[key] = b;
+    }
+  };
+  add("h3", "", "Testmodus · + schließt", dbgEl);
+  sect("Wetter", DBG_WEA);
+  sect("Aktionen", DBG_ACT);
+  const s = add("div", "", "", dbgEl);
+  s.id = "dState";
+}
+buildDbg();
+
+function syncDbg() {
+  for (const [, key, arg] of DBG_WEA) dbgBtns[key].classList.toggle("on", arg === WEA.kind);
+  dbgBtns.u.classList.toggle("on", DBG.god);
+  dbgBtns.t.classList.toggle("on", DBG.tank);
+  dbgBtns.z.classList.toggle("on", !DBG.hold);
+}
+
+function dbgStatus() {
+  const air = !rear.grounded && !front.grounded;
+  const bx = bikeX(), by = (rear.y + front.y) / 2;
+  return [
+    "Wetter " + WEA.kind + "  p=" + WEA.p.toFixed(2) +
+      (WEA.left > 0 && WEA.left < 500 ? "  noch " + Math.ceil(WEA.left) + " s" : ""),
+    "Nässe  " + WEA.wet.toFixed(2) + "   Grip " + gripAt(bx, by).toFixed(3),
+    "Wind   " + Math.round(windAcc(air)) + " px/s²   Böe " + WEA.gust.toFixed(2),
+    "Grav   ×" + gravFactor().toFixed(2) + (WEA.kind === "tornado"
+      ? "   Trichter " + Math.round(WEA.tx - bx) + " px" : ""),
+    "x " + Math.round(bx) + "   Höhe " + Math.round(by / CFG.PPM) + " m" +
+      (DBG.god ? "   UNSTERBLICH" : "") + (DBG.tank ? "   TANK VOLL" : ""),
+  ].join("\n");
+}
+
+function toggleDbg() {
+  DBG.on = !DBG.on;
+  dbgEl.classList.toggle("hidden", !DBG.on);
+  if (DBG.on) { syncDbg(); el("dState").textContent = dbgStatus(); }
+}
+
+function dbgKey(k) {
+  const b = dbgBtns[k.toLowerCase()];
+  if (!b) return false;
+  b.click();
+  return true;
+}
+
+const isGasKey   = k => k === "ArrowRight" || k === "ArrowUp" || k === "d" || k === "D";
+const isBrakeKey = k => k === "ArrowLeft" || k === "ArrowDown" || k === "a" || k === "A";
+const isBoostKey = k => k === " " || k === "Spacebar";
+
+addEventListener("keydown", e => {
+  if (e.repeat) return;
+  const k = e.key;
+  if (k === "+" || k === "*") { e.preventDefault(); toggleDbg(); return; }
+  if (DBG.on && dbgKey(k)) { e.preventDefault(); return; }
+  if (isGasKey(k))   { IN.gas = true; padR.classList.add("on"); e.preventDefault(); }
+  if (isBrakeKey(k)) { IN.brake = true; padL.classList.add("on"); e.preventDefault(); }
+  if (isBoostKey(k)) {
+    e.preventDefault();
+    if (G.state === "play") { IN.boost = true; boostBox.classList.add("on"); }
+    else start();
+  }
+  if ((k === "r" || k === "R") && G.state !== "menu") start();
+  if (k === "Enter" && G.state !== "play") start();
+});
+addEventListener("keyup", e => {
+  const k = e.key;
+  if (isGasKey(k))   { IN.gas = false; padR.classList.remove("on"); }
+  if (isBrakeKey(k)) { IN.brake = false; padL.classList.remove("on"); }
+  if (isBoostKey(k)) { IN.boost = false; boostBox.classList.remove("on"); }
+});
+addEventListener("blur", () => {
+  IN.gas = IN.brake = IN.boost = false;
+  padL.classList.remove("on"); padR.classList.remove("on"); boostBox.classList.remove("on");
+});
+
+el("btn").addEventListener("click", start);
+
+/* =========================================================================
+   LOOP
+   ========================================================================= */
+reset();
+showOverlay(false);
+
+let last = performance.now(), acc = 0;
+const FIXED = 1 / 60;
+
+function frame(now) {
+  let dt = (now - last) / 1000;
+  last = now;
+  if (dt > 0.25) dt = 0.25;          // Tab war im Hintergrund
+  acc += dt;
+  let guard = 0;
+  while (acc >= FIXED && guard++ < 6) { update(FIXED); acc -= FIXED; }
+  draw();
+  updateHUD();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -2624,6 +2624,12 @@ function bauProfil() {
 const AB_STERNE = Array.from({ length: 120 }, (_, i) => ({
   x: hash(i * 1.7 + 3), y: hash(i * 5.1 + 8), s: 0.5 + hash(i * 3.3 + 2) * 1.3,
 }));
+const AB_ZONEN = [
+  { y: CFG.SNOWLINE,  name: "Schnee", farbe: [214, 228, 244] },
+  { y: CFG.ICELINE,   name: "Eis",    farbe: [168, 214, 240] },
+  { y: CFG.LAVALINE,  name: "Vulkan", farbe: [236, 152, 110] },
+  { y: CFG.SPACELINE, name: "Sterne", farbe: [186, 178, 240] },
+];
 const AB_GALAXIEN = [
   { x: 0.16, y: 0.30, r: 1.25, dreh: 0.5,  ton: 0.15 },
   { x: 0.78, y: 0.20, r: 0.85, dreh: -0.8, ton: 0.7 },
@@ -2763,21 +2769,45 @@ function zeichneKarte(ctx) {
   ctx.fillStyle = vg;
   ctx.fillRect(lx, py(CFG.SPACELINE), rx - lx, yLava - py(CFG.SPACELINE));
 
+  // Mond: nicht ganz links, dort stehen die Höhenangaben; und tief genug,
+  // dass er nicht zwischen den Galaxien hängt
+  const mx2 = lx + (rx - lx) * 0.36, my2 = py(CFG.SPACELINE) - 38;
+  const mg = ctx.createRadialGradient(mx2, my2, 0, mx2, my2, 62);
+  mg.addColorStop(0, "rgba(226,236,255,.5)");
+  mg.addColorStop(0.22, "rgba(200,216,246,.16)");
+  mg.addColorStop(1, "rgba(160,190,255,0)");
+  ctx.fillStyle = mg;
+  ctx.beginPath(); ctx.arc(mx2, my2, 62, 0, 7); ctx.fill();
+  ctx.fillStyle = "rgba(238,244,255,.92)";
+  ctx.beginPath(); ctx.arc(mx2, my2, 13, 0, 7); ctx.fill();
+  ctx.fillStyle = "rgba(196,208,232,.45)";
+  ctx.beginPath();
+  ctx.arc(mx2 - 4, my2 - 3, 3, 0, 7);
+  ctx.moveTo(mx2 + 7, my2 + 2); ctx.arc(mx2 + 4, my2 + 2, 2.2, 0, 7);
+  ctx.fill();
+
   /* --- Nebengipfel: geben dem Hauptberg Tiefe ---------------------------- */
+  const hMax = unten - oben;
   const nebenberg = (cx, halb, hoehe, farbe, a) => {
-    ctx.fillStyle = rgba(farbe, a);
-    ctx.beginPath();
-    ctx.moveTo(cx - halb, unten);
+    const p = new Path2D();
+    p.moveTo(cx - halb, unten);
     for (let k = 0; k <= 56; k++) {
       const t = k / 56 * 2 - 1;
       const f = Math.max(0, 1 - Math.pow(Math.abs(t), 1.5));
       const rau = (vnoise(k * 0.7 + cx * 0.013) - 0.5) * 0.16 * f;
-      ctx.lineTo(cx + t * halb, unten - hoehe * (f + rau));
+      p.lineTo(cx + t * halb, unten - hoehe * (f + rau));
     }
-    ctx.lineTo(cx + halb, unten);
-    ctx.closePath(); ctx.fill();
+    p.lineTo(cx + halb, unten);
+    p.closePath();
+    ctx.fillStyle = rgba(farbe, a);
+    ctx.fill(p);
+    // Schneekappe: nur das obere Drittel, damit sie nicht wie ein Hut absteht
+    ctx.save();
+    ctx.clip(p);
+    ctx.fillStyle = rgba([206, 220, 240], a * 0.5);
+    ctx.fillRect(cx - halb, unten - hoehe, halb * 2, hoehe * 0.34);
+    ctx.restore();
   };
-  const hMax = unten - oben;
   nebenberg(W * 0.20, W * 0.30, hMax * 0.42, [38, 52, 84], 0.75);
   nebenberg(W * 0.90, W * 0.26, hMax * 0.36, [34, 47, 78], 0.75);
   nebenberg(W * 0.47, W * 0.24, hMax * 0.30, [44, 58, 92], 0.6);
@@ -2879,6 +2909,32 @@ function zeichneKarte(ctx) {
     ctx.moveTo(hx - 2, dy - hh); ctx.lineTo(hx + 4, dy - hh - 6);
     ctx.lineTo(hx + 10, dy - hh); ctx.closePath(); ctx.fill();
   }
+
+  /* Höhenlinien: machen aus dem Bild einen Rückblick statt einer bloßen
+     Silhouette – man sieht, wo die Gebiete anfangen, durch die man gefahren
+     ist. Gestrichelt und blass, damit sie den Berg nicht zerschneiden. */
+  ctx.setLineDash([7, 9]);
+  ctx.lineWidth = 1;
+  ctx.font = "600 11px system-ui, sans-serif";
+  ctx.textBaseline = "middle";
+  for (const z of AB_ZONEN) {
+    const Y = py(z.y);
+    if (Y < oben - 4 || Y > unten) continue;
+    ctx.strokeStyle = rgba(z.farbe, 0.3);
+    ctx.beginPath(); ctx.moveTo(lx + W * 0.11, Y); ctx.lineTo(rx, Y); ctx.stroke();
+    ctx.fillStyle = rgba(z.farbe, 0.72);
+    ctx.fillText(z.name + " · " + Math.round(z.y / CFG.PPM) + " m", lx + W * 0.014, Y);
+  }
+  ctx.setLineDash([]);
+  ctx.textBaseline = "alphabetic";
+
+  // Vignette: nimmt den Rändern Helligkeit und holt den Gipfel nach vorn
+  const vig = ctx.createRadialGradient(W * 0.58, H * 0.52, H * 0.28,
+                                       W * 0.58, H * 0.52, H * 0.95);
+  vig.addColorStop(0, "rgba(4,7,16,0)");
+  vig.addColorStop(1, "rgba(4,7,16,.55)");
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, W, H);
 }
 
 /* Was sich bewegt: die wachsende Route und das Sternbild über dem Gipfel. */
@@ -2907,12 +2963,46 @@ function zeichneAnimiertes(u, M, ein) {
       ctx.lineTo(ex, ey);
     }
     ctx.stroke();
-    if (lauf < 0.999) {                      // Leuchtpunkt an der Spitze der Linie
-      const g = ctx.createRadialGradient(ex, ey, 0, ex, ey, 13);
-      g.addColorStop(0, "rgba(255,238,190,.95)");
+
+    /* Marken an den Gebietsgrenzen: sie springen an, sobald die Linie dort
+       vorbeigekommen ist. So liest man ab, welche Gebiete man durchfahren
+       hat, statt nur eine Kurve zu sehen. */
+    for (const z of AB_ZONEN) {
+      let iz = -1;
+      for (let i = 1; i <= PROFIL.n; i++)
+        if (PROFIL.y[i - 1] < z.y && PROFIL.y[i] >= z.y) { iz = i; break; }
+      if (iz < 0 || iz > bis) continue;
+      const an = Math.min(1, (bis - iz) / 6);      // kurz nach dem Passieren voll da
+      const zx = pxAuf(iz), zy = py(PROFIL.y[iz]) - 2;
+      ctx.fillStyle = rgba(z.farbe, 0.9 * an);
+      ctx.beginPath(); ctx.arc(zx, zy, 3.4, 0, 7); ctx.fill();
+      ctx.strokeStyle = rgba(z.farbe, 0.5 * an);
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(zx, zy, 7 - 3 * an, 0, 7); ctx.stroke();
+      ctx.lineWidth = 2.6;
+    }
+
+    if (lauf < 0.999) {                      // vorne fährt das Bike
+      const g = ctx.createRadialGradient(ex, ey, 0, ex, ey, 15);
+      g.addColorStop(0, "rgba(255,238,190,.9)");
       g.addColorStop(1, "rgba(255,214,130,0)");
       ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(ex, ey, 13, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(ex, ey, 15, 0, 7); ctx.fill();
+      // winziges Bike: zwei Räder, Rahmen, Fahrer – in Fahrtrichtung geneigt
+      const i0 = Math.max(0, Math.floor(bis) - 3);
+      const neig = Math.atan2(ey - (py(PROFIL.y[i0]) - 2), ex - pxAuf(i0));
+      ctx.save();
+      ctx.translate(ex, ey); ctx.rotate(neig);
+      ctx.strokeStyle = "rgba(30,38,60,.95)"; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(-4, -3.4, 2.8, 0, 7); ctx.moveTo(6.8, -3.4); ctx.arc(4, -3.4, 2.8, 0, 7);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,246,220,.95)"; ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(-4, -3.4); ctx.lineTo(0, -6.4); ctx.lineTo(4, -3.4);
+      ctx.moveTo(0, -6.4); ctx.lineTo(-1, -10.4);
+      ctx.stroke();
+      ctx.restore();
     }
   }
 

@@ -175,17 +175,25 @@
       grid-template-columns:1.06fr .94fr;padding:11px 15px 13px}
     #panel h1{grid-area:1/1/2/3;font-size:20px;margin-bottom:1px}
     #sub{grid-area:2/1/3/3;font-size:11.5px;line-height:1.4;margin-bottom:7px}
-    #charLbl{grid-area:3/1/4/2;margin-bottom:6px}
-    #chars{grid-area:4/1/5/2}
-    #buff{grid-area:5/1/6/2;margin-bottom:0}
+    #gradWahl{grid-area:3/1/4/2;margin-bottom:6px}
+    #gradText{display:none}          /* die Knopf-Untertitel sagen es schon */
+    #charLbl{grid-area:4/1/5/2;margin-bottom:6px}
+    #chars{grid-area:5/1/6/2}
+    #buff{grid-area:6/1/7/2;margin-bottom:0}
     /* Tipps (im Menü) und Statistik (nach dem Lauf) teilen sich dieselbe Zelle –
        es ist ohnehin immer nur eins von beidem sichtbar. */
-    .tips{grid-area:3/2/5/3;margin:0;align-self:start}
-    #stats{grid-area:3/2/5/3;flex-wrap:wrap;margin:0;align-self:start}
+    .tips{grid-area:3/2/6/3;margin:0;align-self:start}
+    #stats{grid-area:3/2/6/3;flex-wrap:wrap;margin:0;align-self:start}
     #stats .card{flex:1 1 44%}
-    #btn{grid-area:5/2/6/3;align-self:end;margin-top:0}
-    .char{width:46px}
-    .char .pic{width:40px;height:40px}
+    #btn{grid-area:6/2/7/3;align-self:end;margin-top:0}
+    /* über die ID, sonst gewinnt die allgemeine .char-Regel weiter unten und
+       die sechs Fahrer brechen in eine zweite Zeile um */
+    #chars .char{width:44px}
+    #chars .char .pic{width:38px;height:38px}
+    #chars .char .nm{font-size:9.5px}
+    #gradWahl .grad{padding:5px 6px}
+    #gradWahl .grad b{font-size:12.5px}
+    #gradWahl .grad span{font-size:9.5px}
   }
   /* Noch flacher (Querformat mit eingeblendeter Browserleiste): der Werbesatz
      unter dem Titel fliegt raus. Nach dem Lauf bleibt er stehen, dort steht
@@ -195,7 +203,24 @@
     #panel h1{font-size:18px}
     #buff{padding:7px 10px 8px}
     .tips{font-size:11px;line-height:1.5;padding:8px 10px}
+    #gradWahl{margin-bottom:4px}
+    #gradWahl .grad{padding:4px 6px}
+    /* der Endbildschirm zeigt zusätzlich die Statistik und war sonst 5 px zu hoch */
+    #stats .card{padding:4px 8px}
+    #stats .val{font-size:15px}
+    #stats .lbl{font-size:9px}
   }
+
+  /* ---------- Schwierigkeitsgrad ---------- */
+  #gradWahl{display:flex;gap:8px;margin-bottom:7px}
+  .grad{flex:1;padding:9px 8px;border-radius:12px;cursor:pointer;font:inherit;color:#fff;
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
+    display:flex;flex-direction:column;gap:2px;line-height:1.2;transition:border-color .12s,background .12s}
+  .grad b{font-size:14px;font-weight:800}
+  .grad span{font-size:10.5px;opacity:.6;letter-spacing:.02em}
+  .grad.on{background:rgba(126,224,161,.16);border-color:rgba(126,224,161,.7)}
+  .grad.on span{opacity:.85}
+  #gradText{font-size:11.5px;line-height:1.5;opacity:.62;margin-bottom:11px;min-height:1em}
 
   /* ---------- Fahrerauswahl ---------- */
   #charLbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;opacity:.6;margin-bottom:9px}
@@ -318,6 +343,11 @@
       <div class="card"><div class="lbl">Coins</div><div class="val" id="sCoins">0</div></div>
       <div class="card"><div class="lbl">Rekord</div><div class="val" id="sBest">0</div></div>
     </div>
+    <div id="gradWahl">
+      <button class="grad" data-grad="einfach"><b>🌿 Einfach</b><span>500 m · zahm</span></button>
+      <button class="grad" data-grad="normal"><b>🔥 Normal</b><span>1000 m · alles</span></button>
+    </div>
+    <div id="gradText"></div>
     <div id="charLbl">Fahrer <span id="coinBox">🪙 <span id="coinCount">0</span></span></div>
     <div id="chars"></div>
     <div id="buff"></div>
@@ -532,6 +562,67 @@ const CFG = {
 };
 
 /* =========================================================================
+   SCHWIERIGKEITSGRADE
+
+   Ein Grad ist ein Satz Überschreibungen auf CFG plus ein paar Schalter. Weil
+   CFG an hunderten Stellen gelesen wird, wird nicht überall abgefragt, sondern
+   einmal beim Umschalten der ganze Satz gesetzt – und vorher aus CFG_BASIS
+   zurückgestellt, damit sich die Grade nicht gegenseitig aufaddieren.
+   ========================================================================= */
+const CFG_BASIS = { ...CFG };
+
+const GRADE = {
+  einfach: {
+    name: "Einfach", icon: "🌿",
+    text: "500 m bis zum Gipfel · keine Adler, keine Entführer, kein Heli · nur Regen und Sturm",
+    cfg: {
+      // Alle Abschnitte auf die halbe Höhe: Schnee 50, Eis 125, Vulkan 250,
+      // Sterne 375, Gipfel 500 m.
+      SNOWLINE: 1300, ICELINE: 3250, LAVALINE: 6500, SPACELINE: 9750,
+      GIPFEL: 13000, FINAL_RISE: 650, FINAL_FLAT: 260,
+      SLOPE_CAP: 0.78,        // flacher: 38° statt 44° als Deckel
+      CAN_SPACING: 2100,      // Kanister deutlich öfter
+    },
+    diff: 0.55,               // der Schwierigkeitsverlauf steigt langsamer
+    wetter: ["regen", "sturm"],
+    adler: false, ufo: false, komet: true, heli: false,
+    leben: 2,
+  },
+  normal: {
+    name: "Normal", icon: "🔥",
+    text: "1000 m bis zum Gipfel · alle Gefahren, alles Wetter",
+    cfg: {}, diff: 1, wetter: null,
+    adler: true, ufo: true, komet: true, heli: true,
+    leben: 0,
+  },
+};
+
+let GRAD = "normal";
+let G_REGEL = GRADE.normal;
+
+function setzeGrad(name) {
+  if (!GRADE[name]) name = "normal";
+  GRAD = name;
+  G_REGEL = GRADE[name];
+  Object.assign(CFG, CFG_BASIS, G_REGEL.cfg);
+  ZONES = [
+    { y: CFG.ICELINE,   icon: "❄️", name: "Eiszone" },
+    { y: CFG.LAVALINE,  icon: "🌋", name: "Vulkanzone" },
+    { y: CFG.SPACELINE, icon: "✨", name: "Sternenzone" },
+    { y: CFG.GIPFEL,    icon: "🚀", name: "Schwerelos" },
+  ];
+  try { localStorage.setItem("hcb.grad", name); } catch (e) {}
+  ladeBest();
+}
+
+// Getrennte Rekorde: ein 500-m-Lauf soll den 1000-m-Rekord nicht überschreiben
+function bestKey() { return GRAD === "normal" ? "hcb.best" : "hcb.best." + GRAD; }
+function ladeBest() {
+  try { G.best = Math.max(0, parseInt(localStorage.getItem(bestKey()) || "0", 10) || 0); }
+  catch (e) { G.best = 0; }
+}
+
+/* =========================================================================
    CANVAS / KAMERA
    ========================================================================= */
 const cvs = document.getElementById("c");
@@ -594,7 +685,8 @@ function diffAt(x) {
   // zur einzigen geraden Rampe, weil für Täler kein Spielraum mehr bleibt.
   // Ab da wird es nicht mehr steiler, aber die Strecke geht weiter: gemessen
   // bleiben Median 33° und Täler erhalten, es ist also weiter fahrbar.
-  return Math.min(3.67, t <= 1 ? t : 1 + (t - 1) * 0.6);
+  // Im leichten Grad wächst der Verlauf gedämpft – dasselbe Gelände, nur zahmer
+  return Math.min(3.67, t <= 1 ? t : 1 + (t - 1) * 0.6) * G_REGEL.diff;
 }
 
 // Pro Runde neu gewürfelt: gleicher Schwierigkeitsverlauf, andere Berge.
@@ -973,6 +1065,7 @@ function buildTerrain() {
 let HELIS = [];
 function bauHelis() {
   HELIS = [];
+  if (!G_REGEL.heli) return;               // im leichten Grad gibt es keine
   const gebiete = [[0, CFG.SNOWLINE], [CFG.SNOWLINE, CFG.ICELINE],
                    [CFG.ICELINE, CFG.LAVALINE], [CFG.LAVALINE, CFG.SPACELINE]];
   for (const [unten, oben] of gebiete) {
@@ -1348,15 +1441,14 @@ const G = {
 };
 
 // Die Gebiete oberhalb des Schnees, in der Reihenfolge, in der man sie erreicht
-const ZONES = [
+// wird von setzeGrad neu gesetzt, weil die Höhen vom Schwierigkeitsgrad abhängen
+let ZONES = [
   { y: CFG.ICELINE,   icon: "❄️", name: "Eiszone" },
   { y: CFG.LAVALINE,  icon: "🌋", name: "Vulkanzone" },
   { y: CFG.SPACELINE, icon: "✨", name: "Sternenzone" },
   { y: CFG.GIPFEL,    icon: "🚀", name: "Schwerelos" },
 ];
 const cans = new Map();    // index -> eingesammelt?
-
-try { G.best = Math.max(0, parseInt(localStorage.getItem("hcb.best") || "0", 10) || 0); } catch (e) {}
 
 function canPos(k) {
   const x = k * CFG.CAN_SPACING + 500 + hash(k * 3.7) * 400;
@@ -1393,7 +1485,8 @@ function weatherReset() {
 }
 
 function pickWeather() {
-  const keys = Object.keys(WKIND);
+  // Im leichten Grad nur die harmlosen Lagen: kein Gewitter, kein Tornado
+  const keys = G_REGEL.wetter || Object.keys(WKIND);
   let sum = 0;
   for (const k of keys) sum += WKIND[k].gewicht;
   let r = Math.random() * sum;
@@ -1519,7 +1612,7 @@ function updateGefahren(dt) {
   /* ---- Adler: kreist kurz, stößt einmal zu und geht dabei drauf ---- */
   const a = GEF.adler;
   if (a === null) {
-    if (by > CFG.ADLER_VON && raum < 0.4) {
+    if (G_REGEL.adler && by > CFG.ADLER_VON && raum < 0.4) {
       GEF.adlerNext -= dt;
       if (GEF.adlerNext <= 0) { starteAdler(); GEF.adlerNext = rnd(CFG.ADLER_EVERY[0], CFG.ADLER_EVERY[1]); }
     }
@@ -1551,7 +1644,7 @@ function updateGefahren(dt) {
   /* ---- Entführer: nur in der Sternenzone, Strahl wie ein Blitz ---- */
   const u = GEF.ufo;
   if (u === null) {
-    if (raum > 0.5) {
+    if (G_REGEL.ufo && raum > 0.5) {
       GEF.ufoNext -= dt;
       if (GEF.ufoNext <= 0) { starteUfo(); GEF.ufoNext = rnd(CFG.UFO_EVERY[0], CFG.UFO_EVERY[1]); }
     }
@@ -1719,7 +1812,7 @@ function gameOver(reason) {
   G.state = "over";
   G.reason = reason;
   const sc = Math.floor(G.score);
-  if (sc > G.best) { G.best = sc; try { localStorage.setItem("hcb.best", String(sc)); } catch (e) {} }
+  if (sc > G.best) { G.best = sc; try { localStorage.setItem(bestKey(), String(sc)); } catch (e) {} }
   G.earned = Math.floor(sc / 100);          // je 100 Punkte ein Coin
   if (G.earned > 0) { coins += G.earned; saveProgress(); }
   showOverlay(true);
@@ -2053,7 +2146,7 @@ function applyBuffs() {
     if (MOD.ult === "stuntfahrer") MOD.flip = 2;
     if (MOD.ult === "schutzengel") MOD.lives = 1;
   }
-  G.lives = MOD.lives;
+  G.lives = MOD.lives + G_REGEL.leben;   // der leichte Grad gibt zwei dazu
 }
 
 // Quadratischer Ausschnitt ums Gesicht – funktioniert für freigestellte
@@ -5358,7 +5451,8 @@ const DBG_ACT = [
     unlocked = CHARS.map((c, i) => i === 0);
     charIdx = viewIdx = 0;
     G.best = 0;
-    try { for (const k of ["best", "coins", "levels", "unlocked", "char"]) localStorage.removeItem("hcb." + k); } catch (e) {}
+    try { for (const k of ["best", "best.einfach", "coins", "levels", "unlocked", "char"])
+            localStorage.removeItem("hcb." + k); } catch (e) {}
     applyBuffs(); renderCard(); updateHUD();
     toast("Spielstand gelöscht");
   }],
@@ -5482,6 +5576,24 @@ addEventListener("blur", () => {
   IN.gas = IN.brake = IN.boost = false;
   padL.classList.remove("on"); padR.classList.remove("on"); boostBox.classList.remove("on");
 });
+
+/* Schwierigkeitsgrad wählen. Die Wahl gilt erst für den nächsten Lauf und
+   wird gemerkt; Rekord und HUD stellen sich sofort auf den Grad um. */
+function renderGrad() {
+  for (const b of document.querySelectorAll(".grad"))
+    b.classList.toggle("on", b.dataset.grad === GRAD);
+  el("gradText").textContent = G_REGEL.text;
+  updateHUD();
+}
+for (const b of document.querySelectorAll(".grad"))
+  b.addEventListener("click", () => {
+    if (G.state === "play") return;
+    setzeGrad(b.dataset.grad);
+    applyBuffs();                 // Leben hängen am Grad
+    renderGrad(); renderCard();
+  });
+try { setzeGrad(localStorage.getItem("hcb.grad") || "normal"); } catch (e) { setzeGrad("normal"); }
+renderGrad();
 
 el("btn").addEventListener("click", start);
 

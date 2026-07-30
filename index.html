@@ -524,6 +524,8 @@ const CFG = {
   GEY_DAUER: 1.3,          // s Ausbruch
   GEY_R: 34,               // px halbe Breite der Säule
   AIR_DAMP: 0.9994,
+  MEER_GRAV: 0.62,     // Auftrieb im Meer-Modus
+  MEER_DAMP: 0.9975,   // Wasser bremst stärker als Luft
   ROLL_FRIC: 0.007,
   BRAKE_FRIC: 0.14,
   REST: 0.12,
@@ -649,19 +651,21 @@ function setzeGrad(name) {
   GRAD = name;
   G_REGEL = GRADE[name];
   Object.assign(CFG, CFG_BASIS, G_REGEL.cfg);
+  // tp = fertige Knopfbeschriftung im Testmodus, damit die Artikel stimmen
   ZONES = G_REGEL.meer ? [
-    { y: -CFG.ICELINE,   icon: "🪸", name: "Riff" },
-    { y: -CFG.LAVALINE,  icon: "🌑", name: "Dämmerzone" },
-    { y: -CFG.SPACELINE, icon: "🦑", name: "Tiefsee" },
-    { y: -CFG.GIPFEL,    icon: "🕳", name: "Graben" },
+    { y: -CFG.ICELINE,   icon: "🪸", name: "Riff",       tp: "Runter zum Riff" },
+    { y: -CFG.LAVALINE,  icon: "🌑", name: "Dämmerzone", tp: "Runter zur Dämmerzone" },
+    { y: -CFG.SPACELINE, icon: "🦑", name: "Tiefsee",    tp: "Runter in die Tiefsee" },
+    { y: -CFG.GIPFEL,    icon: "🕳", name: "Graben",     tp: "Runter in den Graben" },
   ] : [
-    { y: CFG.ICELINE,   icon: "❄️", name: "Eiszone" },
-    { y: CFG.LAVALINE,  icon: "🌋", name: "Vulkanzone" },
-    { y: CFG.SPACELINE, icon: "✨", name: "Sternenzone" },
-    { y: CFG.GIPFEL,    icon: "🚀", name: "Schwerelos" },
+    { y: CFG.ICELINE,   icon: "❄️", name: "Eiszone",    tp: "Rauf in die Eiszone" },
+    { y: CFG.LAVALINE,  icon: "🌋", name: "Vulkanzone", tp: "Rauf in die Vulkanzone" },
+    { y: CFG.SPACELINE, icon: "✨", name: "Sternenzone", tp: "Rauf in die Sternenzone" },
+    { y: CFG.GIPFEL,    icon: "🚀", name: "Schwerelos",  tp: "Rauf ins Schwerelose" },
   ];
   bauRampen();          // Bodenfarben hängen an den Gebietshöhen
   bauAbZonen();         // ebenso die Beschriftung der Schlussgrafik
+  if (typeof syncDbgNamen === "function") syncDbgNamen();   // Testmodus-Knöpfe
   PROFIL = null; ABKARTE = null;     // Schlussgrafik gehört zur alten Welt
   try { localStorage.setItem("hcb.grad", name); } catch (e) {}
   ladeBest();
@@ -1294,7 +1298,8 @@ function seatBody() {
 let GRAVK = 1;              // Wetter-Faktor auf die Gravitation, siehe step()
 
 function integrate(p, h) {
-  const vx = (p.x - p.px) * CFG.AIR_DAMP, vy = (p.y - p.py) * CFG.AIR_DAMP;
+  const d = istMeer() ? CFG.MEER_DAMP : CFG.AIR_DAMP;
+  const vx = (p.x - p.px) * d, vy = (p.y - p.py) * d;
   p.px = p.x; p.py = p.y;
   p.x += vx;
   p.y += vy - CFG.GRAV * GRAVK * h * h;
@@ -1608,8 +1613,13 @@ function windAcc(air) {
 }
 
 function gravFactor() {
-  if (WEA.kind !== "tornado") return 1;
-  return 1 - (1 - CFG.WEA_TORNADO_GRAV) * WEA.p * tornadoFall(Math.abs(WEA.tx - bikeX()));
+  // Unter Wasser trägt der Auftrieb: das Bike fällt langsamer und schwebt
+  // nach Sprüngen länger. Der Wert ist so gewählt, dass die Kletter- und
+  // Bremsgrenzen mitwachsen, statt das Fahren zu zerlegen.
+  const wasser = istMeer() ? CFG.MEER_GRAV : 1;
+  if (WEA.kind !== "tornado") return wasser;
+  return wasser * (1 - (1 - CFG.WEA_TORNADO_GRAV) * WEA.p
+                       * tornadoFall(Math.abs(WEA.tx - bikeX())));
 }
 
 // Auftrieb des Trichters. Wirkt auf beide Räder gleich, dreht das Bike also
@@ -5347,6 +5357,13 @@ const FISCHE = Array.from({ length: 16 }, (_, i) => ({
   s: 0.5 + hash(i * 2.9) * 0.9, v: (18 + hash(i * 8.3) * 26) * (hash(i * 5.1) > 0.5 ? 1 : -1),
   n: 3 + Math.floor(hash(i * 9.7) * 5), ph: hash(i * 3.7) * 6.28,
 }));
+// Einzelne große Fische dicht an der Kamera: sie ziehen sichtbar am Fahrer
+// vorbei und geben dem Wasser Tiefe, ohne den Blick auf die Bahn zu nehmen.
+const FISCHE_NAH = Array.from({ length: 7 }, (_, i) => ({
+  x: hash(i * 3.3 + 17) * 4200, y: hash(i * 5.9 + 11) * 2600 - 1300,
+  s: 0.75 + hash(i * 7.3) * 0.7, v: (26 + hash(i * 4.7) * 30) * (hash(i * 6.9) > 0.5 ? 1 : -1),
+  n: 1, ph: hash(i * 8.1) * 6.28,
+}));
 
 // 0 an der Oberfläche, 1 am Grund
 function meerTiefe(y) { return Math.max(0, Math.min(1, -y / CFG.GIPFEL)); }
@@ -5412,17 +5429,21 @@ function drawBlasen() {
   }
 }
 
-function drawFische() {
+function drawFische(liste, par, groesse) {
   const t = performance.now() / 1000;
-  const par = 0.55;
-  for (const f of FISCHE) {
+  /* Senkrecht in einem Band um die Kamera wiederholen. Fest an einer Welthöhe
+     verankert wären sie nach den ersten Metern Abstieg für immer über dem
+     Bildrand – gemessen war beim Abtauchen kein einziger mehr zu sehen. */
+  const band = (H / SCALE) * 1.6;
+  for (const f of liste) {
     const wx = f.x + t * f.v;
     const px = W * CAMX + (((wx - cam.x * par) % 4200 + 4200) % 4200 - 2100) * SCALE;
-    const py = H * CAMY - (f.y - cam.y * par) * SCALE;
-    if (px < -160 || px > W + 160 || py < -80 || py > H + 80) continue;
-    const s = f.s * Math.max(0.6, SCALE);
+    const dy = ((f.y - cam.y * par) % band + band) % band - band * 0.5;
+    const py = H * CAMY - dy * SCALE;
+    if (px < -220 || px > W + 220 || py < -110 || py > H + 110) continue;
+    const s = f.s * groesse * Math.max(0.6, SCALE);
     const hin = f.v > 0 ? 1 : -1;
-    const tief = meerTiefe(f.y);
+    const tief = meerTiefe(cam.y);        // Farbe nach der Tiefe, in der man ist
     ctx.fillStyle = rgba(lerp3([120, 190, 210], [40, 80, 120], tief), 0.75);
     for (let k = 0; k < f.n; k++) {
       const ox = (k - f.n / 2) * 17 * s * hin;
@@ -5442,12 +5463,13 @@ function drawFische() {
 
 function drawMeer() {
   drawWasser();
-  drawFische();
+  drawBlasen();           // in der Wassersäule, also hinter der Fahrbahn
+  drawFische(FISCHE, 0.55, 1);        // ferne Schwärme
   drawTerrain();          // Bewuchs wird hier von selbst zu Seegras: die
                           // Gebietsanteile sind unter Wasser alle null
   drawCans();
+  drawFische(FISCHE_NAH, 0.92, 2.1);  // große Einzelfische dicht an der Kamera
   drawBike();
-  drawBlasen();           // vor allem, damit sie wie nah an der Kamera wirken
   drawSternbild();
   drawAbspann();
 }
@@ -5748,6 +5770,15 @@ function tpTo(x) {
 function tpWeltall() {
   if (!needPlay()) return;
   if (!FINALE) { toast("kein Gipfel auf dieser Strecke"); return; }
+  // Im Meer gibt es keinen Absprung: dort wird einfach auf der Grabensohle
+  // abgesetzt, das Finale löst beim Aufsetzen von selbst aus.
+  if (istMeer()) {
+    // genau auf den tiefsten Punkt: schon 40 px dahinter steigt der Grund
+    // wieder an und die Zielmarke wird nicht mehr erreicht
+    tpTo(FINALE.xGipfel);
+    toast("🕳 Grabensohle · " + Math.round(CFG.GIPFEL / CFG.PPM) + " m");
+    return;
+  }
   tpTo(FINALE.xGipfel - 30);
   const w = Math.atan(CFG.FINAL_SLOPE1), v = 13;  // Kante, px pro Substep
   const vx = Math.cos(w) * v, vy = Math.sin(w) * v;
@@ -5773,10 +5804,12 @@ function tpNext(list) {
 // vom Anfang aus gesucht und nicht ab dem Bike. Sonst käme man aus einem
 // höheren Gebiet nie wieder in ein tieferes zurück, weil dort alles vor einem
 // schon über der gesuchten Höhe liegt.
-function tpAbove(hoehe, fehler) {
+/* Erste Stelle, die im Fortschrittsmaß weiter liegt als angegeben. Im Meer
+   heißt "weiter" tiefer, darum läuft der Vergleich über fortschritt(). */
+function tpAbove(fortHoehe, fehler) {
   if (!needPlay()) return null;
   for (let x = 400; x < TEND - 400; x += 40)
-    if (terrainY(x) > hoehe) { tpTo(x); return x; }
+    if (fortschritt(terrainY(x)) > fortHoehe) { tpTo(x); return x; }
   toast(fehler);
   return null;
 }
@@ -5821,7 +5854,8 @@ const DBG_ACT = [
     toast("Spielstand gelöscht");
   }],
   ["Rauf in den Schnee", "s",
-   () => tpAbove(CFG.SNOWLINE + 600 * gradSkala(), "kein Schnee in Reichweite")],
+   () => tpAbove(CFG.SNOWLINE + 600 * gradSkala(),
+                 istMeer() ? "keine Sandbank in Reichweite" : "kein Schnee in Reichweite")],
   /* Nicht direkt auf die Grenze, sondern ein Stück darüber: dort ist das Gebiet
      zu zwei Dritteln eingeblendet. Genau auf der Grenze sähe es noch aus wie
      das Gebiet darunter, und man denkt, der Knopf tut nichts.
@@ -5833,13 +5867,16 @@ const DBG_ACT = [
      weiter auf die Höhen von "Normal" – im leichten Grad landete man damit im
      falschen Gebiet oder gar nicht. */
   ...[0, 1, 2].map(i => [
-    "Rauf in die " + ZONES[i].name, ["e", "v", "w"][i],
+    // Platzhalter: die richtige Beschriftung setzt syncDbgNamen, sobald der
+    // Modus feststeht. Leer ginge nicht – dann entsteht gar kein Textknoten.
+    "Gebiet " + (i + 1), ["e", "v", "w"][i],
     () => {
       const z = ZONES[i];
-      if (tpAbove(z.y + 1200 * gradSkala(), "keine " + z.name + " in Reichweite") === null) return;
+      if (tpAbove(fortschritt(z.y) + 1200 * gradSkala(),
+                  "keine " + z.name + " in Reichweite") === null) return;
       G.zone = Math.max(G.zone, i + 1);       // Meldung nicht doppelt bringen
       toast(z.icon + " " + z.name + " · " +
-            Math.round((rear.y + front.y) / 2 / CFG.PPM) + " m");
+            Math.round(fortschritt((rear.y + front.y) / 2) / CFG.PPM) + " m");
     },
   ]),
   ["Zum Gipfel-Anlauf", "k", () => {
@@ -5847,7 +5884,8 @@ const DBG_ACT = [
     if (!FINALE) { toast("kein Gipfel auf dieser Strecke"); return; }
     tpTo(FINALE.xBahn + 60);
     G.zone = Math.max(G.zone, 3);
-    toast("🏔 Anlaufbahn · " + Math.round(FINALE.bahn / CFG.PPM) + " m");
+    toast((istMeer() ? "🕳 Grabenkante · " : "🏔 Anlaufbahn · ")
+          + Math.round(fortschritt(FINALE.bahn) / CFG.PPM) + " m");
   }],
   ["Absprung ins All", "p", tpWeltall],
 ];
@@ -5887,8 +5925,26 @@ function buildDbg() {
   s.id = "dState";
 }
 buildDbg();
+syncDbgNamen();      // Gebietsnamen des aktuellen Modus eintragen
+
+/* Die Knopfbeschriftungen entstehen beim Bauen der Liste, die Gebietsnamen
+   hängen aber am Modus. Nach einem Wechsel müssen sie nachgezogen werden,
+   sonst steht im Meer weiter "Rauf in die Eiszone". */
+function syncDbgNamen() {
+  if (!dbgBtns.e) return;
+  const setz = (key, txt) => {
+    const b = dbgBtns[key];
+    if (b && b.firstChild) b.firstChild.nodeValue = txt;
+  };
+  const meer = istMeer();
+  ["e", "v", "w"].forEach((k, i) => { if (ZONES[i]) setz(k, ZONES[i].tp); });
+  setz("s", meer ? "Runter zur Sandbank" : "Rauf in den Schnee");
+  setz("k", meer ? "Zur Grabenkante" : "Zum Gipfel-Anlauf");
+  setz("p", meer ? "Auf den Grund" : "Absprung ins All");
+}
 
 function syncDbg() {
+  syncDbgNamen();
   for (const [, key, arg] of DBG_WEA) dbgBtns[key].classList.toggle("on", arg === WEA.kind);
   dbgBtns.u.classList.toggle("on", DBG.god);
   dbgBtns.t.classList.toggle("on", DBG.tank);

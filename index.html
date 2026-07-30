@@ -72,6 +72,27 @@
   #padL .knob{border-color:rgba(255,160,160,.6)}
   .knob span{display:block;font-size:22px;line-height:1}
 
+  /* ---------- Handy: Vollbild + Querformat ---------- */
+  /* Am Handy frisst die Browserleiste ein Fünftel der Höhe. Der Knopf sitzt
+     oben mittig zwischen den beiden HUD-Karten und nur dort, wo wirklich mit
+     dem Finger gespielt wird. */
+  #vollbild{position:fixed;top:calc(10px + env(safe-area-inset-top));left:50%;
+    transform:translateX(-50%);z-index:4;display:none;
+    width:44px;height:44px;border-radius:12px;cursor:pointer;font:inherit;font-size:19px;color:#fff;
+    background:rgba(8,14,30,.45);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.12)}
+  #vollbild:active{transform:translateX(-50%) scale(.93)}
+  @media (pointer:coarse){ #vollbild{display:block} }
+
+  #quer{position:fixed;inset:0;z-index:20;display:none;place-items:center;text-align:center;
+    padding:26px;background:rgba(6,10,22,.95);backdrop-filter:blur(5px)}
+  @media (pointer:coarse) and (orientation:portrait){ body:not(.querOk) #quer{display:grid} }
+  #quer .dreh{display:block;font-size:56px;margin-bottom:16px;
+    animation:kipp 2.2s ease-in-out infinite;transform-origin:50% 50%}
+  @keyframes kipp{0%,40%{transform:rotate(0)}55%,100%{transform:rotate(90deg)}}
+  #quer p{font-size:15px;line-height:1.6;opacity:.8;max-width:280px;margin:0 auto 18px}
+  #querBtn{padding:12px 20px;border:1px solid rgba(255,255,255,.25);border-radius:12px;
+    background:rgba(255,255,255,.08);color:#fff;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+
   /* ---------- Overlay ---------- */
   #overlay{position:fixed;inset:0;display:grid;place-items:center;padding:20px;overflow-y:auto;
     background:radial-gradient(120% 90% at 50% 30%,rgba(10,16,34,.55),rgba(6,10,22,.92))}
@@ -215,6 +236,16 @@
 <div id="pads" class="hidden">
   <div class="pad" id="padL"><div class="knob"><span>◀</span>Bremse</div></div>
   <div class="pad" id="padR"><div class="knob"><span>▶</span>Gas</div></div>
+</div>
+
+<button id="vollbild" title="Vollbild" aria-label="Vollbild">⛶</button>
+
+<div id="quer">
+  <div>
+    <span class="dreh">📱</span>
+    <p>Dreh das Handy quer – im Hochformat siehst du kaum etwas von der Strecke.</p>
+    <button id="querBtn">Trotzdem hochkant spielen</button>
+  </div>
 </div>
 
 <div id="overlay">
@@ -3918,19 +3949,117 @@ function start() {
 const IN = { gas: false, brake: false, boost: false };
 const padL = el("padL"), padR = el("padR"), boostBox = el("boostBox");
 
-function bindPad(pad, key) {
-  const on = e => { e.preventDefault(); IN[key] = true; pad.classList.add("on");
-                    if (pad.setPointerCapture && e.pointerId != null) { try { pad.setPointerCapture(e.pointerId); } catch (_) {} } };
-  const off = e => { IN[key] = false; pad.classList.remove("on"); };
-  pad.addEventListener("pointerdown", on);
-  pad.addEventListener("pointerup", off);
-  pad.addEventListener("pointercancel", off);
-  pad.addEventListener("pointerleave", off);
-  pad.addEventListener("contextmenu", e => e.preventDefault());
+/* Am Handy liegen mehrere Finger gleichzeitig auf dem Glas, und sie wandern.
+   Deshalb wird pro Bedienfeld gemerkt, WELCHE Zeiger es gerade halten – ein
+   einzelnes Flag wäre falsch, sobald ein zweiter Finger dasselbe Feld antippt
+   und wieder loslässt. Ein Feld ist gedrückt, solange sein Set nicht leer ist. */
+const STEUER = [[padL, "brake"], [padR, "gas"], [boostBox, "boost"]];
+const halter = new Map(STEUER.map(([, key]) => [key, new Set()]));
+const zeigerAuf = new Map();   // pointerId -> key
+
+function setzeFeld(key, an) {
+  const feld = STEUER.find(s => s[1] === key);
+  IN[key] = an;
+  feld[0].classList.toggle("on", an);
 }
-bindPad(padL, "brake");
-bindPad(padR, "gas");
-bindPad(boostBox, "boost");
+
+function zeigerZu(key, id) {
+  const alt = zeigerAuf.get(id);
+  if (alt === key) return;
+  if (alt !== undefined) {
+    const s = halter.get(alt);
+    s.delete(id);
+    if (!s.size) setzeFeld(alt, false);
+  }
+  if (key === undefined) { zeigerAuf.delete(id); return; }
+  zeigerAuf.set(id, key);
+  halter.get(key).add(id);
+  setzeFeld(key, true);
+}
+
+// Welches Bedienfeld liegt unter diesem Punkt? Der Knopf selbst ist ein Kind
+// des Pads, darum über closest() nach oben suchen.
+function feldBei(x, y) {
+  const t = document.elementFromPoint(x, y);
+  if (!t) return undefined;
+  for (const [node, key] of STEUER) if (node.contains(t)) return key;
+  return undefined;
+}
+
+addEventListener("pointerdown", e => {
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  const key = feldBei(e.clientX, e.clientY);
+  if (key === undefined) return;
+  e.preventDefault();
+  zeigerZu(key, e.pointerId);
+}, { passive: false });
+
+// Zieht der Finger von der Bremse aufs Gas, soll das Gas greifen und die Bremse
+// aufgehen – vorher blieb sie hängen, weil nur der Anfangsknopf zählte.
+addEventListener("pointermove", e => {
+  if (!zeigerAuf.has(e.pointerId)) return;
+  e.preventDefault();
+  zeigerZu(feldBei(e.clientX, e.clientY), e.pointerId);
+}, { passive: false });
+
+const zeigerWeg = e => zeigerZu(undefined, e.pointerId);
+addEventListener("pointerup", zeigerWeg);
+addEventListener("pointercancel", zeigerWeg);
+// Wischt der Finger aus dem Fenster oder schiebt der Browser seine Leisten
+// darüber, kommt kein pointerup mehr – sonst klemmte das Gas fest.
+addEventListener("lostpointercapture", zeigerWeg);
+addEventListener("contextmenu", e => {
+  if (feldBei(e.clientX, e.clientY) !== undefined) e.preventDefault();
+});
+
+/* Vollbild: am Handy gewinnt man damit die Höhe der Browserleiste zurück, und
+   die Leiste kann beim Wischen nicht mehr aufklappen und den Finger schlucken.
+   Wenn dabei die Lage festgestellt werden darf, gleich auf quer stellen. */
+const vollbildBtn = el("vollbild");
+function vollbildAn() {
+  const ziel = document.documentElement;
+  const geht = ziel.requestFullscreen || ziel.webkitRequestFullscreen;
+  if (!geht) return Promise.reject();
+  return Promise.resolve(geht.call(ziel, { navigationUI: "hide" }));
+}
+vollbildBtn.addEventListener("click", () => {
+  const drin = document.fullscreenElement || document.webkitFullscreenElement;
+  if (drin) {
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    return;
+  }
+  vollbildAn().then(() => {
+    // nur ein Angebot – Desktop und iOS kennen die Sperre nicht, das ist kein Fehler
+    if (screen.orientation && screen.orientation.lock)
+      screen.orientation.lock("landscape").catch(() => {});
+  }).catch(() => {});
+});
+function vollbildSymbol() {
+  const drin = document.fullscreenElement || document.webkitFullscreenElement;
+  vollbildBtn.textContent = drin ? "⤡" : "⛶";
+}
+addEventListener("fullscreenchange", vollbildSymbol);
+addEventListener("webkitfullscreenchange", vollbildSymbol);
+
+el("querBtn").addEventListener("click", () => document.body.classList.add("querOk"));
+
+// Ohne Tastatur ergibt "Leertaste" keinen Sinn – am Handy die Finger erklären.
+if (matchMedia("(pointer:coarse)").matches) {
+  el("boostKey").textContent = "antippen";
+  document.querySelector(".tips").innerHTML =
+    '<b>Rechte Hälfte</b> Gas · <b>linke Hälfte</b> Bremse · <b>Boost-Leiste</b> unten ' +
+    'halten (doppelter Verbrauch)<br>' +
+    'Beide Daumen gleichzeitig geht – in der Luft hebt Gas die Nase, Bremse drückt sie runter.<br>' +
+    'Steile Hänge brauchen <b>Anlauf</b> · je 100 Punkte gibt es einen 🪙<br>' +
+    'Mit <b>⛶</b> oben ins Vollbild, dann stört die Browserleiste nicht mehr.';
+}
+
+// Beim Verlassen des Tabs alles lösen, sonst fährt das Bike bei der Rückkehr weiter.
+function alleZeigerLoesen() {
+  for (const id of [...zeigerAuf.keys()]) zeigerZu(undefined, id);
+}
+addEventListener("blur", alleZeigerLoesen);
+document.addEventListener("visibilitychange", () => { if (document.hidden) alleZeigerLoesen(); });
 
 /* =========================================================================
    TESTMODUS – Taste +. Setzt jede Wetterlage direkt, löst Blitze aus und

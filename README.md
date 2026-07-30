@@ -22,12 +22,17 @@ python -m http.server 8777
 
 | Aktion | Tastatur | Touch/Maus |
 |---|---|---|
-| Gas | `→` oder Leertaste | rechte Bildschirmhälfte |
-| Bremse / rückwärts | `←` | linke Bildschirmhälfte |
+| Gas | `→`, `↑` oder `D` | rechte Bildschirmhälfte |
+| Bremse / rückwärts | `←`, `↓` oder `A` | linke Bildschirmhälfte |
+| Boost | Leertaste | Leiste unten mittig |
 | Neustart | `R` | Button im Overlay |
 
 In der Luft kippt Gas die Nase hoch und Bremse sie runter — der Anstellwinkel beim Aufsetzen
 entscheidet über Landung oder Sturz.
+
+**Am Handy:** Gas, Bremse und Boost lassen sich gleichzeitig halten, und ein Finger darf von einem
+Feld aufs andere wandern. Der Knopf ⛶ oben schaltet ins Vollbild (und versucht dabei, aufs
+Querformat zu drehen); im Hochformat weist ein Hinweis aufs Drehen hin, lässt sich aber wegtippen.
 
 ## Was drin ist
 

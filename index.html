@@ -418,6 +418,16 @@ const CFG = {
   FINAL_DROP: 1.3,     // so steil fällt der Berg hinter dem Gipfel ab
   WELTALL_ZEIT: 6,     // s Schwebeflug nach dem Absprung, dann kommt der Abspann
   ABSPANN_ZEIT: 8,     // s Rückblick: auszoomen, Route nachzeichnen, Sternbild
+  // Mitflug: der Heli hängt hinter und über einer Schanzenkante. Ausgemessen
+  // über 40 zufällige Welten: der Scheitel eines guten Sprungs liegt im Mittel
+  // 360 px hinter und 170 px über der Kante. 320/150 liegt knapp darunter –
+  // mit Boost erwischt ihn ein sauberer Anflug in 67 % der Welten, ohne Boost
+  // nur in 26 %. 300 px Höhe wären fast nie erreichbar gewesen.
+  HELI_DX: 320,        // px hinter der Kante
+  HELI_DY: 150,        // px über der Kante
+  HELI_R: 74,          // Fangradius um die Kabine
+  HELI_ZEIT: 2.4,      // s Mitflug bis zum Absetzen
+  HELI_GEWINN: 80,     // m Höhe, die der Mitflug bringt
   ZONE_FADE: 2200,     // px, über die ein Gebiet ein- und ausblendet
   BOOST_ACC: 1.85,     // Schubfaktor während des Boosts
   BOOST_SPD: 1.35,     // erlaubte Höchstgeschwindigkeit dabei
@@ -870,6 +880,7 @@ function buildTerrain() {
   for (let i = 0; i < TFIELD.length; i++) TFIELD[i] += jumpRise(i * TSTEP);
 
   bauFinale();
+  bauHelis();
 
   // Deck einmessen: Höhe dort ablesen, wo es aufliegt (außerhalb der
   // Abbruchkante), und die Geländesteigung davor/dahinter merken. Damit legt
@@ -923,6 +934,32 @@ function buildTerrain() {
    gebaut statt gewürfelt: eben, dann eine gerade Rampe auf 1000 m, dahinter
    fällt der Berg weg. Alles danach überschreibt das Höhenfeld vollständig –
    nur so ist die Bahn wirklich eben und der Gipfel wirklich auf 1000 m.   */
+/* ---- Mitflug-Helikopter --------------------------------------------------
+   Höchstens einer je Gebiet, im Sternengebiet gar keiner. Er hängt hinter und
+   über der stärksten Schanze des Gebiets: erwischt man ihn im Flug, trägt er
+   einen HELI_GEWINN Meter höher. Wer die Kante zu langsam oder mit falschem
+   Winkel verlässt, fliegt darunter durch – genau das soll er auch.        */
+let HELIS = [];
+function bauHelis() {
+  HELIS = [];
+  const gebiete = [[0, CFG.SNOWLINE], [CFG.SNOWLINE, CFG.ICELINE],
+                   [CFG.ICELINE, CFG.LAVALINE], [CFG.LAVALINE, CFG.SPACELINE]];
+  for (const [unten, oben] of gebiete) {
+    let best = null;
+    for (const j of JUMPS) {
+      const kante = j.x0 + j.L, y = terrainY(kante);
+      if (y < unten || y >= oben) continue;
+      if (FINALE && kante > FINALE.xBahn) continue;      // nicht in die Schlussbahn
+      // die Schanze mit dem meisten Auftrieb: hohe Rampe plus tiefer Landeplatz
+      const sc = j.H * 2 + (y - terrainY(kante + 700));
+      if (!best || sc > best.sc) best = { kante, y, sc };
+    }
+    if (!best) continue;
+    HELIS.push({ x: best.kante + CFG.HELI_DX, y: best.y + CFG.HELI_DY,
+                 genutzt: false, ph: hash(best.kante * 0.0071) * 6.28 });
+  }
+}
+
 let FINALE = null;
 function bauFinale() {
   const bahn = CFG.GIPFEL - CFG.FINAL_RISE;
@@ -1275,6 +1312,7 @@ const G = {
   time: 0, zone: 0,           // wie viele Gebietsgrenzen in diesem Lauf schon überfahren
   weltall: null,              // s seit dem Absprung ins All (null = noch am Berg)
   abspann: null,              // s seit dem Beginn des Rückblicks (null = läuft nicht)
+  heli: null,                 // läuft gerade ein Mitflug? {t, x0, y0, zx, zy}
   geschafft: false,           // Lauf mit dem Absprung beendet, nicht mit einem Crash
 };
 
@@ -1471,6 +1509,8 @@ function reset() {
   federReset();
   G.score = 0; G.maxY = y0; G.fuel = 100; G.reason = ""; G.time = 0; G.zone = 0;
   G.weltall = null; G.abspann = null; G.geschafft = false;
+  G.heli = null;
+  for (const h of HELIS) h.genutzt = false;
   G.boost = 100; G.boosting = false; G.boostIdle = 0;
   G.airTime = 0; G.spinAcc = 0; G.touch = 0;
   G.lastAng = Math.atan2(front.y - rear.y, front.x - rear.x);
@@ -1539,6 +1579,67 @@ function gameOver(reason) {
   showOverlay(true);
 }
 
+/* Trifft das Bike im Flug die Kabine? Nur in der Luft – wer über den Boden
+   rollt, soll nicht von unten eingesammelt werden. */
+function heliFangen() {
+  if (rear.grounded || front.grounded) return;
+  const bx = (rear.x + front.x) / 2, by = (rear.y + front.y) / 2;
+  for (const h of HELIS) {
+    if (h.genutzt) continue;
+    if (Math.abs(bx - h.x) > CFG.HELI_R) continue;
+    if (Math.abs(by - h.y) > CFG.HELI_R * 0.85) continue;
+    h.genutzt = true;
+    /* Absetzpunkt: die erste Stelle weiter vorn, deren BODEN HELI_GEWINN Meter
+       über dem Boden unter dem Fangpunkt liegt. Vom Bike aus gerechnet käme zu
+       wenig heraus – gefangen wird ja in der Luft, abgesetzt aber am Boden.
+       Danach noch ein flaches Fleckchen suchen, sonst rutscht man beim
+       Aufsetzen sofort den Hang hinunter. */
+    const ziel = terrainY(bx) + CFG.HELI_GEWINN * CFG.PPM;
+    let zx = h.x + 900;
+    for (let i = Math.ceil(h.x / TSTEP); i < TFIELD.length; i++)
+      if (TFIELD[i] >= ziel) { zx = i * TSTEP; break; }
+    for (let k = 0; k < 40; k++) {                 // bis 40*TSTEP weiter suchen
+      if (Math.abs(slopeAt(zx)) < 0.35) break;
+      zx += TSTEP;
+    }
+    G.heli = { t: 0, x0: bx, y0: by, hx: h.x, hy: h.y,
+               zx, zy: terrainY(zx) + CFG.WHEEL_R + 6 };
+    G.airTime = 0; G.spinAcc = 0;          // der Mitflug ist kein Salto
+    toast("🚁 Mitflug! +" + CFG.HELI_GEWINN + " m");
+    return;
+  }
+}
+
+/* Der Heli zieht das Bike in einem Bogen nach oben und setzt es ab. Die
+   Partikel werden direkt gesetzt und die Vorpositionen mitgeführt, sonst
+   liest Verlet die Versetzung als Geschwindigkeit und das Bike schießt beim
+   Absetzen davon. */
+function heliFlug(dt) {
+  const f = G.heli;
+  f.t += dt;
+  const u = Math.min(1, f.t / CFG.HELI_ZEIT);
+  const e = smooth(u);
+  const bx = f.x0 + (f.zx - f.x0) * e;
+  // erst steigen, dann absetzen: der Bogen führt über den Absetzpunkt hinaus
+  const bogen = Math.sin(Math.PI * u) * 260;
+  const by = f.y0 + (f.zy - f.y0) * e + bogen;
+  const hb = CFG.WHEELBASE / 2;
+  rear.x = bx - hb; rear.y = by; front.x = bx + hb; front.y = by;
+  rear.px = rear.x; rear.py = rear.y; front.px = front.x; front.py = front.y;
+  seatBody(); body.px = body.x; body.py = body.y;
+  rear.grounded = front.grounded = false;
+  rear.sag = front.sag = rear.sagV = front.sagV = 0;
+  G.lastAng = Math.atan2(front.y - rear.y, front.x - rear.x);
+  if (by > G.maxY) {                        // Höhe zählt schon während des Flugs
+    G.score += (by - G.maxY) / CFG.PPM * (1 + G.maxY / (CFG.PPM * 100)) * MOD.score;
+    G.maxY = by;
+  }
+  const k = Math.min(1, dt * 4.5);          // Kamera wie sonst hinterher
+  cam.x += (bx - cam.x) * k;
+  cam.y += (by + 50 - cam.y) * k;
+  if (u >= 1) { G.heli = null; federReset(); }
+}
+
 function update(dt) {
   if (G.state !== "play") return;
   G.time += dt;
@@ -1557,6 +1658,10 @@ function update(dt) {
     }
   }
 
+  // Mitflug: solange der Heli trägt, ruht die Physik und das Bike wird an
+  // seiner Kufe entlang zum Absetzpunkt gezogen.
+  if (G.heli !== null) { heliFlug(dt); return; }
+
   // Wetter vor der Physik: Grip, Wind und Gravitation gelten für diesen Schritt.
   // Ein Blitz kann die Runde hier schon beenden.
   updateWeather(dt);
@@ -1565,6 +1670,7 @@ function update(dt) {
   const SUB = 2, h = dt / SUB;
   for (let i = 0; i < SUB; i++) step(h);
   federung(dt);
+  heliFangen();
 
   const mx = (rear.x + front.x) / 2, my = (rear.y + front.y) / 2;
   const b = bodyDir();
@@ -2498,6 +2604,17 @@ function bauProfil() {
   }
 }
 
+/* Deko der Schlussgrafik. Feste Punkte aus hash(), damit das Bild in jedem
+   Lauf gleich aufgebaut ist und nichts flimmert. */
+const AB_STERNE = Array.from({ length: 120 }, (_, i) => ({
+  x: hash(i * 1.7 + 3), y: hash(i * 5.1 + 8), s: 0.5 + hash(i * 3.3 + 2) * 1.3,
+}));
+const AB_GALAXIEN = [
+  { x: 0.16, y: 0.30, r: 1.25, dreh: 0.5,  ton: 0.15 },
+  { x: 0.78, y: 0.20, r: 0.85, dreh: -0.8, ton: 0.7 },
+  { x: 0.45, y: 0.13, r: 0.6,  dreh: 1.9,  ton: 0.45 },
+];
+
 function drawAbspann() {
   const u = G.abspann;
   if (u === null) return;
@@ -2510,10 +2627,17 @@ function drawAbspann() {
   ctx.fillStyle = rgba([7, 11, 24], ein);
   ctx.fillRect(0, 0, W, H);
 
-  const lx = W * 0.09, rx = W * 0.91, oben = H * 0.3, unten = H * 0.84;
-  const px = i => lx + (rx - lx) * (i / PROFIL.n);
+  /* Das Schaubild reicht jetzt von Rand zu Rand und vom unteren bis fast an den
+     oberen Bildrand. Der Gipfel sitzt bei 64 % der Breite, danach fällt der
+     Berg zur rechten Seite wieder ab – gespiegelt und gestaucht, damit es eine
+     Bergsilhouette wird und kein abgeschnittener Anstieg. */
+  const lx = 0, rx = W, gx = W * 0.64;
+  const oben = H * 0.17, unten = H * 0.94;
   const py = y => unten - (unten - oben) * Math.min(1, y / PROFIL.max);
-  const gx = px(PROFIL.n), gy = py(PROFIL.y[PROFIL.n]);
+  const pxAuf = i => lx + (gx - lx) * (i / PROFIL.n);
+  const pxAb = i => gx + (rx - gx) * (1 - i / PROFIL.n);
+  const gy = py(PROFIL.y[PROFIL.n]);
+  const bei = h => Math.max(0, Math.min(1, h / PROFIL.max));
 
   ctx.save();
   // Auszoomen: anfangs steht der Gipfel formatfüllend im Bild, dann weicht er
@@ -2521,10 +2645,77 @@ function drawAbspann() {
   const z = 1 + 11 * (1 - smooth(u / 1.7));
   ctx.translate(gx, gy); ctx.scale(z, z); ctx.translate(-gx, -gy);
 
-  // Silhouette. Der senkrechte Verlauf trägt die Gebiete: Fels, Schnee, Eis,
-  // Vulkan, Sternenzone – dieselbe Reihenfolge wie beim Hochfahren.
+  /* --- Hintergrund je Schicht ------------------------------------------
+     Von unten nach oben: Taghimmel über dem Tal, Dämmerung über Schnee und
+     Eis, Glut über dem Vulkan, Weltall darüber. */
+  const himmel = ctx.createLinearGradient(0, unten, 0, oben - H * 0.17);
+  himmel.addColorStop(0, "#7fb0dd");
+  himmel.addColorStop(bei(CFG.SNOWLINE), "#6b9ccd");
+  himmel.addColorStop(bei(CFG.ICELINE), "#40628f");
+  himmel.addColorStop(bei(CFG.LAVALINE), "#2a3358");
+  himmel.addColorStop(bei(CFG.SPACELINE), "#141a33");
+  himmel.addColorStop(1, "#05070f");
+  ctx.fillStyle = himmel;
+  ctx.fillRect(lx - W, oben - H * 0.17, W * 3, unten - oben + H * 0.17);
+
+  // Sterne: je höher, desto mehr – unten über dem Tal ist Tag
+  const yEis = py(CFG.ICELINE), yOben = oben - H * 0.16;
+  for (const s of AB_STERNE) {
+    const Y = yOben + (yEis - yOben) * s.y;
+    const nah = 1 - (Y - yOben) / Math.max(1, yEis - yOben);   // 1 = ganz oben
+    const a = Math.max(0, nah * nah) * 0.9;
+    if (a < 0.03) continue;
+    ctx.fillStyle = rgba([226, 236, 255], a);
+    ctx.beginPath(); ctx.arc(lx + s.x * (rx - lx), Y, s.s, 0, 7); ctx.fill();
+  }
+
+  // Galaxien ganz oben im Weltall
+  for (const g of AB_GALAXIEN) {
+    const X = lx + g.x * (rx - lx);
+    const Y = yOben + g.y * Math.max(1, py(CFG.SPACELINE) - yOben);
+    const R = 54 * g.r;
+    const kern = lerp3([255, 226, 190], [190, 200, 255], g.ton);
+    ctx.save();
+    ctx.translate(X, Y); ctx.rotate(g.dreh); ctx.scale(1, 0.42);
+    const gl = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+    gl.addColorStop(0, rgba(kern, 0.85));
+    gl.addColorStop(0.28, rgba(kern, 0.3));
+    gl.addColorStop(1, rgba(kern, 0));
+    ctx.fillStyle = gl;
+    ctx.beginPath(); ctx.arc(0, 0, R, 0, 7); ctx.fill();
+    ctx.strokeStyle = rgba(kern, 0.22);       // zwei angedeutete Spiralarme
+    ctx.lineWidth = 3;
+    for (const dir of [1, -1]) {
+      ctx.beginPath();
+      for (let k = 0; k <= 24; k++) {
+        const w = k / 24 * 3.2, r = R * 0.16 + R * 0.8 * (k / 24);
+        const px2 = Math.cos(w) * r * dir, py2 = Math.sin(w) * r * dir;
+        k ? ctx.lineTo(px2, py2) : ctx.moveTo(px2, py2);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Polarlicht über dem Eisgürtel
+  const yLava = py(CFG.LAVALINE);
+  const al = ctx.createLinearGradient(0, py(CFG.ICELINE), 0, yLava);
+  al.addColorStop(0, "rgba(120,235,190,0)");
+  al.addColorStop(0.45, "rgba(120,235,190,.16)");
+  al.addColorStop(1, "rgba(120,180,255,0)");
+  ctx.fillStyle = al;
+  ctx.fillRect(lx, yLava, rx - lx, py(CFG.ICELINE) - yLava);
+
+  // Glut über dem Vulkangürtel
+  const vg = ctx.createLinearGradient(0, yLava, 0, py(CFG.SPACELINE));
+  vg.addColorStop(0, "rgba(230,110,60,0)");
+  vg.addColorStop(0.5, "rgba(230,110,60,.18)");
+  vg.addColorStop(1, "rgba(180,60,50,0)");
+  ctx.fillStyle = vg;
+  ctx.fillRect(lx, py(CFG.SPACELINE), rx - lx, yLava - py(CFG.SPACELINE));
+
+  /* --- Der Berg selbst -------------------------------------------------- */
   const farbverlauf = ctx.createLinearGradient(0, unten, 0, oben);
-  const bei = h => Math.max(0, Math.min(1, h / PROFIL.max));
   farbverlauf.addColorStop(0, "#2f4a35");
   farbverlauf.addColorStop(bei(CFG.SNOWLINE), "#4d6a52");
   farbverlauf.addColorStop(bei(CFG.ICELINE), "#cfd9e4");
@@ -2534,7 +2725,8 @@ function drawAbspann() {
   ctx.fillStyle = farbverlauf;
   ctx.beginPath();
   ctx.moveTo(lx, unten);
-  for (let i = 0; i <= PROFIL.n; i++) ctx.lineTo(px(i), py(PROFIL.y[i]));
+  for (let i = 0; i <= PROFIL.n; i++) ctx.lineTo(pxAuf(i), py(PROFIL.y[i]));
+  for (let i = PROFIL.n; i >= 0; i--) ctx.lineTo(pxAb(i), py(PROFIL.y[i]));
   ctx.lineTo(rx, unten);
   ctx.closePath();
   ctx.fill();
@@ -2546,7 +2738,7 @@ function drawAbspann() {
   const dy = py(PROFIL.y[0]);
   ctx.fillStyle = rgba([236, 226, 206], 0.9 * ein);
   for (let i = 0; i < 3; i++) {
-    const hx = lx + 4 + i * 11, hh = 7 + (i % 2) * 3;
+    const hx = lx + W * 0.02 + i * 11, hh = 7 + (i % 2) * 3;
     ctx.fillRect(hx, dy - hh, 8, hh);
     ctx.beginPath();
     ctx.moveTo(hx - 2, dy - hh); ctx.lineTo(hx + 4, dy - hh - 6);
@@ -2561,16 +2753,16 @@ function drawAbspann() {
     ctx.lineWidth = 2.6;
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.moveTo(px(0), py(PROFIL.y[0]) - 2);
-    let ex = px(0), ey = py(PROFIL.y[0]) - 2;
+    ctx.moveTo(pxAuf(0), py(PROFIL.y[0]) - 2);
+    let ex = pxAuf(0), ey = py(PROFIL.y[0]) - 2;
     for (let i = 1; i <= Math.floor(bis); i++) {
-      ex = px(i); ey = py(PROFIL.y[i]) - 2;
+      ex = pxAuf(i); ey = py(PROFIL.y[i]) - 2;
       ctx.lineTo(ex, ey);
     }
     const rest = bis - Math.floor(bis);      // Zwischenschritt, sonst ruckelt es
     if (rest > 0 && Math.floor(bis) < PROFIL.n) {
       const i = Math.floor(bis);
-      ex = px(i) + (px(i + 1) - px(i)) * rest;
+      ex = pxAuf(i) + (pxAuf(i + 1) - pxAuf(i)) * rest;
       ey = py(PROFIL.y[i]) + (py(PROFIL.y[i + 1]) - py(PROFIL.y[i])) * rest - 2;
       ctx.lineTo(ex, ey);
     }
@@ -2624,10 +2816,60 @@ function drawAbspann() {
     ctx.fillStyle = rgba([214, 226, 245], 0.75 * bt);
     // beide auf dieselbe Grundlinie unter die Karte: über dem Gipfel steht das
     // Sternbild, dort wäre die Zahl im Weg
-    const zeile = py(PROFIL.y[0]) + 26;
-    ctx.fillText("Dorf", lx + 14, zeile);
-    ctx.fillText("Gipfel · 1000 m", gx - 14, zeile);
+    const zeile = Math.min(H - 8, py(PROFIL.y[0]) + 26);
+    ctx.fillText("Dorf", lx + W * 0.045, zeile);
+    ctx.fillText("Gipfel · 1000 m", gx, zeile);
     ctx.textAlign = "left";
+  }
+}
+
+/* Mitflug-Heli. Er schwebt an seiner Stelle und wippt leicht; während er trägt,
+   folgt er dem Bike und hängt es unter die Kufen. */
+function heliBild(px, py, s, t) {
+  const dreh = t * 26;
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.scale(s, s);
+  ctx.strokeStyle = "#2c3446"; ctx.lineWidth = 3; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(-14, 15); ctx.lineTo(20, 15);      // Kufen
+  ctx.moveTo(-8, 8); ctx.lineTo(-11, 15); ctx.moveTo(10, 8); ctx.lineTo(13, 15);
+  ctx.stroke();
+  ctx.fillStyle = "#3f6b46";                                     // Heckausleger
+  ctx.beginPath(); ctx.moveTo(-6, -4); ctx.lineTo(-40, -2);
+  ctx.lineTo(-40, 3); ctx.lineTo(-6, 5); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#4f8256";                                     // Kabine
+  ctx.beginPath(); ctx.ellipse(4, 0, 20, 13, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = "rgba(150,205,240,.85)";                       // Kanzel
+  ctx.beginPath(); ctx.ellipse(11, -2, 9, 8, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = "#2c3446";                                     // Heckrotor
+  ctx.save(); ctx.translate(-40, 0); ctx.rotate(dreh * 1.7);
+  ctx.fillRect(-1.4, -9, 2.8, 18); ctx.restore();
+  ctx.strokeStyle = "#2c3446"; ctx.lineWidth = 2.6;              // Mast
+  ctx.beginPath(); ctx.moveTo(2, -12); ctx.lineTo(2, -18); ctx.stroke();
+  const b = Math.abs(Math.cos(dreh)) * 34 + 6;                   // Hauptrotor
+  ctx.strokeStyle = "rgba(210,222,238,.9)"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(2 - b, -18); ctx.lineTo(2 + b, -18); ctx.stroke();
+  ctx.restore();
+}
+
+function drawHelis() {
+  const t = performance.now() / 1000;
+  const s = SCALE * 1.5;
+  if (G.heli !== null) {                    // trägt gerade: hängt über dem Bike
+    const bx = (rear.x + front.x) / 2, by = (rear.y + front.y) / 2;
+    heliBild(sx(bx), sy(by + 46), s, t);
+    ctx.strokeStyle = "rgba(44,52,70,.9)"; ctx.lineWidth = 2 * SCALE;
+    ctx.beginPath();
+    ctx.moveTo(sx(bx), sy(by + 24)); ctx.lineTo(sx(bx), sy(by + 8));
+    ctx.stroke();
+    return;
+  }
+  for (const h of HELIS) {
+    if (h.genutzt) continue;
+    const px = sx(h.x);
+    if (px < -160 || px > W + 160) continue;
+    const wippe = Math.sin(t * 1.5 + h.ph) * 7;
+    heliBild(px, sy(h.y) + wippe * SCALE, s, t);
   }
 }
 
@@ -4306,6 +4548,7 @@ function draw() {
   drawGeysers();
   drawBridges();
   drawCans();
+  drawHelis();            // schweben über dem Gelände
   drawTornado();          // vor dem Gelände, aber hinter dem Bike
   drawBike();
   drawSternbild();        // Finale: tritt hervor, während das Bike verblasst
@@ -4609,6 +4852,7 @@ const DBG_ACT = [
   ["Nächste Steilwand", "n", () => tpNext(WALLS.map(w => w.x0 - 320))],
   // mit Anlauf absetzen, sonst kommt man ohne Tempo an der Kante an
   ["Nächste Rampe", "j", () => tpNext(JUMPS.map(j => j.x0 - 1400))],
+  ["Nächster Heli", "h", () => tpNext(HELIS.map(h => h.x - CFG.HELI_DX - 1800))],
   ["99 Coins", "c", () => { coins = 99; saveProgress(); renderCard(); toast("🪙 99 Coins"); }],
   ["Spielstand löschen", "x", () => {
     coins = 0;

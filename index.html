@@ -1631,13 +1631,14 @@ function update(dt) {
   }
   if (G.fuel <= 0) { G.fuel = 0; gameOver("Kein Sprit mehr!"); return; }
 
-  // Weltraum-Finale: ab dem Gipfel schwebt man ein paar Sekunden, während das
-  // All um einen kreist – danach ist der Lauf zu Ende, aber gewonnen.
+  // Weltraum-Finale: ab dem Gipfel schwebt man schwerelos weiter, während sich
+  // Fahrer und Bike in ein Sternbild verwandeln – danach ist der Lauf zu Ende,
+  // aber gewonnen.
   if (G.weltall !== null) {
     G.weltall += dt;
     if (G.weltall >= CFG.WELTALL_ZEIT) {
       G.geschafft = true;
-      gameOver("🚀 Im Weltall!");
+      gameOver("✨ Ein neues Sternbild!");
       return;
     }
   } else if (my >= CFG.GIPFEL) {
@@ -2377,63 +2378,66 @@ function drawDeepSky() {
 }
 
 /* ---- Weltraum-Finale ----------------------------------------------------
-   Nach dem Absprung kreisen Planeten und Monde um den Fahrer. Jede Bahn ist
-   eine geneigte Ellipse; wer gerade auf der hinteren Hälfte läuft, wird vor
-   dem Bike gezeichnet, der Rest dahinter – das gibt die Tiefe.          */
-const ORBIT = Array.from({ length: 7 }, (_, i) => ({
-  r: 130 + i * 48 + hash(i * 3.7 + 1) * 45,
-  v: (0.1 + hash(i * 5.1 + 2) * 0.14) * (hash(i * 9.3 + 3) > 0.5 ? 1 : -1),
-  ph: hash(i * 2.9 + 4) * 6.28,
-  flach: 0.3 + hash(i * 7.7 + 5) * 0.45,      // Neigung der Bahn
-  dreh: hash(i * 11.1 + 6) * 3.14,
-  gr: 8 + hash(i * 4.3 + 7) * 15,
-  ring: hash(i * 8.7 + 8) > 0.62,
-  ton: hash(i * 6.1 + 9),
-}));
+   Nach dem Absprung wird aus Fahrer und Bike ein Sternbild: an den Eckpunkten
+   treten Sterne hervor, das Bike verblasst, die Figur richtet sich auf und
+   steht am Ende still am Himmel. Die Punkte liegen im selben lokalen System
+   wie drawBike – Ursprung in der Radmitte, +x vorwärts, -y oben.        */
+const STERNBILD = [
+  { x: -31, y:   0, gr: 1.5 },   // Hinterrad
+  { x:  31, y:   0, gr: 1.5 },   // Vorderrad
+  { x: -16, y: -18, gr: 1.0 },   // Rahmen hinten
+  { x:   8, y: -15, gr: 0.9 },   // Rahmen vorn
+  { x:  21, y: -27, gr: 1.1 },   // Lenker
+  { x:  -5, y: -35, gr: 1.0 },   // Schulter
+  { x:   1, y: -49, gr: 1.5 },   // Kopf
+  { x:  16, y: -27, gr: 0.8 },   // Hand
+];
+const STERNLINIEN = [[0, 2], [2, 3], [3, 1], [3, 4], [1, 4],
+                     [2, 5], [5, 6], [5, 7], [7, 4]];
 
-function drawWeltall(vorn) {
-  if (G.weltall === null) return;
-  const ein = smooth(G.weltall / 1.3);        // sanft einblenden
-  if (ein < 0.01) return;
-  const cx = sx(bikeX()), cy = sy((rear.y + front.y) / 2), t = G.weltall;
-  for (const o of ORBIT) {
-    const w = o.ph + t * o.v * 6.28;
-    const hinten = Math.sin(w) < 0;
-    if (hinten === vorn) continue;
-    const ox = Math.cos(w) * o.r * SCALE, oy = Math.sin(w) * o.r * o.flach * SCALE;
-    const cs = Math.cos(o.dreh), sn = Math.sin(o.dreh);
-    const X = cx + ox * cs - oy * sn, Y = cy + ox * sn + oy * cs;
-    const R = o.gr * SCALE * (hinten ? 0.8 : 1.15);   // hinten kleiner
-    const a = ein * (hinten ? 0.75 : 1);
-    if (!vorn) {                              // Bahnlinie nur einmal zeichnen
-      ctx.strokeStyle = rgba([150, 170, 220], 0.1 * ein);
-      ctx.lineWidth = 1 * SCALE;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, o.r * SCALE, o.r * o.flach * SCALE, o.dreh, 0, 7);
-      ctx.stroke();
-    }
-    const hell = lerp3([255, 214, 170], [170, 210, 255], o.ton);
-    const dunkel = lerp3([120, 70, 60], [40, 60, 120], o.ton);
-    if (o.ring) {                             // Ring hinter dem Planeten
-      ctx.save();
-      ctx.translate(X, Y); ctx.rotate(o.dreh + 0.4); ctx.scale(1, 0.3);
-      ctx.strokeStyle = rgba(hell, 0.45 * a); ctx.lineWidth = 2.4 * SCALE;
-      ctx.beginPath(); ctx.arc(0, 0, R * 1.9, Math.PI, 2 * Math.PI); ctx.stroke();
-      ctx.restore();
-    }
-    const g = ctx.createRadialGradient(X - R * 0.4, Y - R * 0.4, R * 0.1, X, Y, R);
-    g.addColorStop(0, rgba(hell, a));
-    g.addColorStop(1, rgba(dunkel, a));
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(X, Y, R, 0, 7); ctx.fill();
-    if (o.ring) {                             // vordere Ringhälfte
-      ctx.save();
-      ctx.translate(X, Y); ctx.rotate(o.dreh + 0.4); ctx.scale(1, 0.3);
-      ctx.strokeStyle = rgba(hell, 0.75 * a); ctx.lineWidth = 2.4 * SCALE;
-      ctx.beginPath(); ctx.arc(0, 0, R * 1.9, 0, Math.PI); ctx.stroke();
-      ctx.restore();
-    }
+// 0 bis 1: wie weit die Verwandlung fortgeschritten ist
+function sternAnteil() {
+  if (G.weltall === null) return 0;
+  return smooth((G.weltall - 0.7) / Math.max(0.1, CFG.WELTALL_ZEIT - 2.4));
+}
+
+function drawSternbild() {
+  const p = sternAnteil();
+  if (p < 0.004) return;
+  const mx = (rear.x + front.x) / 2, my = (rear.y + front.y) / 2;
+  const ang = Math.atan2(front.y - rear.y, front.x - rear.x);
+  const t = performance.now() / 1000;
+  ctx.save();
+  ctx.translate(sx(mx), sy(my));
+  ctx.rotate(-ang * (1 - p));                 // richtet sich langsam auf
+  const z = SCALE * (1 + p * 1.3);            // und wächst zum Bildmittelpunkt an
+  ctx.scale(z, z);
+  ctx.strokeStyle = rgba([182, 208, 255], 0.45 * p);
+  ctx.lineWidth = 1.2;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  for (const [a, b] of STERNLINIEN) {
+    ctx.moveTo(STERNBILD[a].x, STERNBILD[a].y);
+    ctx.lineTo(STERNBILD[b].x, STERNBILD[b].y);
   }
+  ctx.stroke();
+  for (let i = 0; i < STERNBILD.length; i++) {
+    const s = STERNBILD[i];
+    // versetzt aufleuchten, damit die Sterne nicht im Gleichtakt erscheinen
+    const an = smooth((p - i * 0.055) / 0.45);
+    if (an < 0.01) continue;
+    const funkel = 0.78 + 0.22 * Math.sin(t * 2.6 + i * 1.9);
+    const r = s.gr * 2.2 * an * funkel;
+    const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 3.6);
+    g.addColorStop(0, rgba([255, 255, 255], an));
+    g.addColorStop(0.3, rgba([186, 212, 255], 0.42 * an));
+    g.addColorStop(1, rgba([120, 150, 255], 0));
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(s.x, s.y, r * 3.6, 0, 7); ctx.fill();
+    ctx.fillStyle = rgba([255, 255, 255], an);
+    ctx.beginPath(); ctx.arc(s.x, s.y, r * 0.5, 0, 7); ctx.fill();
+  }
+  ctx.restore();
 }
 
 /* Sternschnuppen der Sternenzone. Vier Stück mit fester Periode, damit ohne
@@ -2827,7 +2831,7 @@ function schattenBand(xm, halb, hoehe, alpha) {
    Wanderer mit Rucksack und Stock, am Vulkan Fachleute im Schutzanzug, in der
    Sternenzone Außerirdische. Sie gehen auf einem kurzen Stück hin und her –
    die Position kommt aus der Zeit, es wird also nichts gespeichert.       */
-const LEUT_STEP = 300;
+const LEUT_STEP = 560;
 
 const LEUT_FARBEN = {
   dorf:   { haut: [232, 185, 141], kleid: [74, 111, 165], bein: [57, 64, 90] },
@@ -2965,6 +2969,55 @@ function leutePlatz(k) {
   return platz;
 }
 
+/* Zurufe. Alles hängt an k und der Uhr, damit kein Zustand mitgeschleppt wird
+   und jede Person zuverlässig bei ihrem eigenen Spruch bleibt. */
+const SPRUECHE = {
+  dorf: ["NICHT SO SCHNELL DU RABAUKE!", "Das ist mein Vorgarten!", "Moin!",
+         "Fahr vorsichtig, Junge!", "Der schafft das nie.", "Grüß die Ziegen!",
+         "MEIN ZAUN!", "Immer diese Motorräder..."],
+  wander: ["Schöne Aussicht, was?", "Da oben wird's glatt!", "Brrr, kalt heute!",
+           "Gipfel ist noch weit!", "Berg heil!", "Hast du Tee dabei?"],
+  vulkan: ["Nicht zu nah an die Lava!", "Messwerte im roten Bereich!",
+           "Der Geysir geht gleich!", "Helm auf, bitte!", "Hier ist Sperrgebiet!",
+           "Faszinierend, dieses Gestein."],
+};
+const ALIEN_SILBEN = ["zip", "zap", "zup"];
+
+function spruchVon(k, art, runde) {
+  if (art !== "alien") {
+    const liste = SPRUECHE[art] || SPRUECHE.dorf;
+    return liste[Math.floor(hash(k * 19.7 + runde * 3.1) * liste.length) % liste.length];
+  }
+  // Aliens können nur zip, zap und zup – daraus zwei bis vier Silben
+  const n = 2 + Math.floor(hash(k * 23.3 + runde * 5.7) * 3);
+  let s = "";
+  for (let i = 0; i < n; i++)
+    s += (i ? " " : "") + ALIEN_SILBEN[Math.floor(hash(k * 29.1 + runde * 7.3 + i * 1.7) * 3) % 3];
+  return s + "?!".charAt(Math.floor(hash(k * 31.7 + runde) * 2));
+}
+
+function drawBlase(px, py, text, a) {
+  const fs = Math.max(9, Math.round(11 * SCALE));
+  ctx.font = "700 " + fs + "px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const bw = ctx.measureText(text).width + fs * 1.1, bh = fs * 1.75;
+  const x0 = px - bw / 2, y0 = py - bh;
+  ctx.fillStyle = rgba([248, 250, 255], 0.92 * a);
+  ctx.strokeStyle = rgba([40, 52, 78], 0.5 * a);
+  ctx.lineWidth = Math.max(1, SCALE);
+  ctx.beginPath();
+  ctx.roundRect(x0, y0, bw, bh, fs * 0.55);
+  ctx.moveTo(px - fs * 0.32, y0 + bh - 1);      // Zipfel nach unten zur Person
+  ctx.lineTo(px, y0 + bh + fs * 0.62);
+  ctx.lineTo(px + fs * 0.32, y0 + bh - 1);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = rgba([26, 34, 56], a);
+  ctx.fillText(text, px, y0 + bh / 2);
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+}
+
 function drawLeute(schattenLauf) {
   const xl = wxAt(-80), xr = wxAt(W + 80), t = performance.now() / 1000;
   for (let k = Math.floor(xl / LEUT_STEP); k <= Math.ceil(xr / LEUT_STEP); k++) {
@@ -2981,6 +3034,15 @@ function drawLeute(schattenLauf) {
     ctx.scale(hin, 1);                                   // spiegeln je Richtung
     figur(ctx, p.art, s, t, p.ph, Math.max(0.22, Math.min(1, p.weite / 45)));
     ctx.restore();
+
+    // Zuruf: alle paar Sekunden, versetzt je Person, mit weichem Ein-/Ausblenden
+    const takt = 9 + hash(k * 13.1 + 2) * 8;
+    const u = (t + hash(k * 17.3 + 5) * takt) % takt;
+    if (u < 2.8) {
+      const a = Math.min(1, u / 0.35, (2.8 - u) / 0.45);
+      drawBlase(sx(wx), sy(wy) - 48 * s,
+                spruchVon(k, p.art, Math.floor((t + hash(k * 17.3 + 5) * takt) / takt)), a);
+    }
   }
 }
 
@@ -3014,28 +3076,6 @@ function drawPfad() {
    ihrem Berg statt mit der Kamera zu schwimmen. */
 function kammSteigung(x, amp, base) {
   return (ridgeY(x + 8, amp, base) - ridgeY(x - 8, amp, base)) / 16;
-}
-
-function drawKammPfad(alt, par, amp, base, o) {
-  const wx0 = cam.x * par + (-40 - W * CAMX) / SCALE;
-  const wx1 = cam.x * par + (W + 40 - W * CAMX) / SCALE;
-  ctx.save();
-  ctx.setLineDash([10 * SCALE, 7 * SCALE]);
-  ctx.lineWidth = 2.4 * SCALE;
-  ctx.lineCap = "round";
-  ctx.strokeStyle = rgba(lerp3(o.weg, [16, 20, 44], alt), 0.85);
-  ctx.beginPath();
-  let auf = false;
-  // knapp unter dem Kamm, sonst verschwindet der Weg in der Silhouettenkante
-  for (let wx = wx0; wx <= wx1; wx += 15) {
-    const py = H * CAMY - (ridgeY(wx, amp, base) - cam.y * par) * SCALE + 4 * SCALE;
-    if (py > H + 30 || Math.abs(kammSteigung(wx, amp, base)) > 0.42) { auf = false; continue; }
-    const px = W * CAMX + (wx - cam.x * par) * SCALE;
-    auf ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
-    auf = true;
-  }
-  ctx.stroke();
-  ctx.restore();
 }
 
 function drawKammLeute(alt, par, amp, base, o) {
@@ -3755,12 +3795,16 @@ function drawBike() {
   const ang = Math.atan2(front.y - rear.y, front.x - rear.x);
   const hb = CFG.WHEELBASE / 2;
 
+  // Im Finale löst sich das Bike auf, während das Sternbild hervortritt
+  const sicht = 1 - sternAnteil();
+  if (sicht < 0.004) return;
+
   // Schatten
   const gy = groundUnder(mx, my);
-  ctx.globalAlpha = Math.max(0, 0.3 - (my - gy) / 500);
+  ctx.globalAlpha = Math.max(0, 0.3 - (my - gy) / 500) * sicht;
   ctx.fillStyle = "#000";
   ctx.beginPath(); ctx.ellipse(sx(mx), sy(gy), 34 * SCALE, 7 * SCALE, 0, 0, 7); ctx.fill();
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = sicht;
 
   drawWheel(rear); drawWheel(front);
 
@@ -3863,6 +3907,7 @@ function drawBike() {
     ctx.beginPath(); ctx.arc(0, -HY, HR * 0.8, -0.5, 1.3); ctx.fill();
   }
   ctx.restore();
+  ctx.globalAlpha = 1;
 }
 
 /* ---- Wetter zeichnen ---------------------------------------------------
@@ -4047,18 +4092,16 @@ function draw() {
   drawProps(alt, 0.22, 420, 300,
             { step: 78, dens: 0.5, sz: 0.62, seed: 11.3,
               baum: [96, 124, 158], wand: [150, 160, 178], dach: [118, 112, 122] });
-  // ganz kleine Gestalten auf dem fernen Kamm, ohne Weg – der wäre dort nur Grieß
-  drawKammLeute(alt, 0.22, 420, 300, { lstep: 240, ldens: 0.7, lsz: 0.44, seed: 11.3 });
+  // ganz kleine, vereinzelte Gestalten auf dem fernen Kamm
+  drawKammLeute(alt, 0.22, 420, 300, { lstep: 520, ldens: 0.34, lsz: 0.26, seed: 11.3 });
   // Dunst liegt zwischen den Ketten, nicht über beiden: sonst verliert auch der
   // Wald der vorderen Kette seinen Kontrast und wird zu grauem Brei.
   drawHaze(alt);
   drawRidge(0.45, 300, 120, mix([92, 122, 158], [22, 28, 58], alt));
-  // Weg zuerst: Wald und Häuser sollen davor stehen, nicht darunter
-  drawKammPfad(alt, 0.45, 300, 120, { weg: [154, 176, 202] });
   drawProps(alt, 0.45, 300, 120,
             { step: 96, dens: 0.62, sz: 1, hsz: 1.9, seed: 4.7, laub: true,
               baum: [58, 86, 114], wand: [128, 134, 142], dach: [92, 76, 78] });
-  drawKammLeute(alt, 0.45, 300, 120, { lstep: 200, ldens: 0.7, lsz: 0.78, seed: 4.7 });
+  drawKammLeute(alt, 0.45, 300, 120, { lstep: 430, ldens: 0.36, lsz: 0.46, seed: 4.7 });
   drawKirche(0.45, 300, 120, alt);
   drawVoegel();           // fliegen vor den Ketten, sonst verschluckt sie der Berg
   drawTerrain();
@@ -4071,9 +4114,8 @@ function draw() {
   drawBridges();
   drawCans();
   drawTornado();          // vor dem Gelände, aber hinter dem Bike
-  drawWeltall(false);     // Himmelskörper auf der hinteren Bahnhälfte
   drawBike();
-  drawWeltall(true);      // und die, die gerade vorbeiziehen
+  drawSternbild();        // Finale: tritt hervor, während das Bike verblasst
   drawIceDust();          // Kristalle in der Luft, direkt vor der Kamera
   drawWeather();
 }
@@ -4123,8 +4165,8 @@ function showOverlay(isOver) {
   if (isOver) {
     el("title").innerHTML = G.reason;
     el("sub").textContent = G.geschafft
-      ? CHARS[charIdx].name + " hat den Gipfel auf 1000 m genommen und ist ins All "
-        + "abgesprungen. Höher geht dieser Berg nicht."
+      ? CHARS[charIdx].name + " hat den Gipfel auf 1000 m genommen, ist ins All "
+        + "abgesprungen und steht jetzt als Sternbild am Himmel. Höher geht es nicht."
       : CHARS[charIdx].name +
         " braucht mehr Anlauf aus dem Tal – und in der Luft die Nase flach halten.";
     el("panel").classList.toggle("geschafft", !!G.geschafft);

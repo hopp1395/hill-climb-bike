@@ -496,7 +496,10 @@ const CFG = {
 const cvs = document.getElementById("c");
 const ctx = cvs.getContext("2d");
 let W = 0, H = 0, DPR = 1, SCALE = 1;
-const CAMX = 0.36, CAMY = 0.64;      // Bildschirmposition des Bikes
+// Bildschirmposition des Bikes. CAMY tiefer angesetzt hieße mehr Himmel; mit
+// 0.55 sitzt das Bike knapp über der Mitte und man sieht mehr vom Gelände,
+// auf das man zufährt – und es liegt nicht mehr hinter der Boost-Leiste.
+const CAMX = 0.36, CAMY = 0.55;
 const cam = { x: 0, y: 0 };
 
 /* Am Handy ist window.innerHeight die LAYOUT-Höhe: sie schließt den Streifen
@@ -2382,18 +2385,37 @@ function drawDeepSky() {
    treten Sterne hervor, das Bike verblasst, die Figur richtet sich auf und
    steht am Ende still am Himmel. Die Punkte liegen im selben lokalen System
    wie drawBike – Ursprung in der Radmitte, +x vorwärts, -y oben.        */
-const STERNBILD = [
-  { x: -31, y:   0, gr: 1.5 },   // Hinterrad
-  { x:  31, y:   0, gr: 1.5 },   // Vorderrad
-  { x: -16, y: -18, gr: 1.0 },   // Rahmen hinten
-  { x:   8, y: -15, gr: 0.9 },   // Rahmen vorn
-  { x:  21, y: -27, gr: 1.1 },   // Lenker
-  { x:  -5, y: -35, gr: 1.0 },   // Schulter
-  { x:   1, y: -49, gr: 1.5 },   // Kopf
-  { x:  16, y: -27, gr: 0.8 },   // Hand
-];
-const STERNLINIEN = [[0, 2], [2, 3], [3, 1], [3, 4], [1, 4],
-                     [2, 5], [5, 6], [5, 7], [7, 4]];
+/* Die Punkte folgen den Koordinaten, die drawBike wirklich zeichnet: Naben bei
+   ±WHEELBASE/2, Felgen im Radradius, darüber Motor, Tank, Sitz, Lenker und der
+   Fahrer bis zum Kopf auf HEAD_H+11. So ist die Silhouette dieselbe wie die,
+   mit der man den ganzen Berg hochgefahren ist. */
+const [STERNBILD, STERNLINIEN] = (() => {
+  const P = [], L = [];
+  const setz = (x, y, gr) => (P.push({ x, y, gr }), P.length - 1);
+  const hb = CFG.WHEELBASE / 2, rr = CFG.WHEEL_R;
+  const rad = cx => {                       // Nabe, fünf Felgensterne, zwei Speichen
+    const nabe = setz(cx, 0, 1.0), felge = [];
+    for (let i = 0; i < 5; i++) {
+      const w = -Math.PI / 2 + i * 6.2832 / 5;
+      felge.push(setz(cx + Math.cos(w) * rr, Math.sin(w) * rr, 0.75));
+    }
+    for (let i = 0; i < 5; i++) L.push([felge[i], felge[(i + 1) % 5]]);
+    L.push([nabe, felge[0]], [nabe, felge[2]]);
+    return nabe;
+  };
+  const hinten = rad(-hb), vorne = rad(hb);
+  const motor  = setz(-6, -7, 0.9),  sitz  = setz(-19, -17, 0.9);
+  const tank   = setz(2, -18, 0.9),  rvorn = setz(12, -14, 0.8);
+  const lenker = setz(21, -27, 1.1), hand  = setz(18, -25, 0.85);
+  const huefte = setz(-16, -20, 0.9), schulter = setz(-3, -36, 1.15);
+  const kopf   = setz(0, -(CFG.HEAD_H + 11), 1.8);
+  const knie   = setz(-4, -14, 0.8), fuss = setz(-2, -6, 0.8);
+  L.push([hinten, motor], [motor, sitz], [sitz, tank], [motor, tank],
+         [tank, rvorn], [rvorn, lenker], [rvorn, vorne], [lenker, hand],
+         [sitz, huefte], [huefte, schulter], [schulter, kopf], [schulter, hand],
+         [huefte, knie], [knie, fuss], [fuss, motor]);
+  return [P, L];
+})();
 
 // 0 bis 1: wie weit die Verwandlung fortgeschritten ist
 function sternAnteil() {
@@ -2424,10 +2446,10 @@ function drawSternbild() {
   for (let i = 0; i < STERNBILD.length; i++) {
     const s = STERNBILD[i];
     // versetzt aufleuchten, damit die Sterne nicht im Gleichtakt erscheinen
-    const an = smooth((p - i * 0.055) / 0.45);
+    const an = smooth((p - (i / STERNBILD.length) * 0.45) / 0.5);
     if (an < 0.01) continue;
     const funkel = 0.78 + 0.22 * Math.sin(t * 2.6 + i * 1.9);
-    const r = s.gr * 2.2 * an * funkel;
+    const r = s.gr * 1.9 * an * funkel;
     const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 3.6);
     g.addColorStop(0, rgba([255, 255, 255], an));
     g.addColorStop(0.3, rgba([186, 212, 255], 0.42 * an));

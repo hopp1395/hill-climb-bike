@@ -2106,7 +2106,7 @@ function update(dt) {
     G.abspann += dt;
     if (G.abspann >= CFG.ABSPANN_ZEIT) {
       G.geschafft = true;
-      gameOver(istMeer() ? "🕳 Auf dem Grund!" : "✨ Ein neues Sternbild!");
+      gameOver(istMeer() ? "💥 Vom Druck zerquetscht!" : "✨ Ein neues Sternbild!");
     }
     return;
   }
@@ -2952,6 +2952,62 @@ function sternAnteil() {
   return smooth((G.weltall - 0.7) / Math.max(0.1, CFG.WELTALL_ZEIT - 2.4));
 }
 
+/* Meer-Finale: kein Sternbild, sondern der Druck. Auf 1000 m hält nichts mehr
+   stand – Ringe laufen von aussen auf das Bike zu, es wird zusammengedrückt,
+   und am Ende bleibt ein Blitz und eine Wolke aus Blasen und Splittern. */
+function drawImplosion() {
+  const p = sternAnteil();
+  if (p < 0.004) return;
+  const cx = sx(bikeX()), cy = sy((rear.y + front.y) / 2);
+  const t = performance.now() / 1000;
+  const s = Math.max(0.6, SCALE);
+
+  // Druckringe, die zusammenlaufen
+  if (p < 0.86) {
+    ctx.lineCap = "round";
+    for (let i = 0; i < 4; i++) {
+      const f = ((p * 1.5 + i * 0.25) % 1);
+      const r = (240 - 210 * f) * s;
+      const a = Math.min(1, p * 2) * (1 - f) * 0.55;
+      ctx.strokeStyle = rgba([190, 240, 255], a);
+      ctx.lineWidth = (1.5 + 3 * f) * s;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.stroke();
+    }
+  }
+
+  // kurz vor dem Ende zieht sich das Wasser sichtbar zusammen
+  if (p > 0.55) {
+    const q = (p - 0.55) / 0.45;
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 120 * s * (1 - q * 0.7));
+    g.addColorStop(0, rgba([10, 20, 36], 0.75 * q));
+    g.addColorStop(1, rgba([10, 20, 36], 0));
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, 120 * s * (1 - q * 0.7), 0, 7); ctx.fill();
+  }
+
+  // der Knall: heller Kern, dann Blasen und Splitter nach aussen
+  if (p > 0.86) {
+    const q = (p - 0.86) / 0.14;
+    const r = 26 * s * (1 - q) + 6 * s;
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3.5);
+    g.addColorStop(0, rgba([255, 255, 255], 1 - q * 0.4));
+    g.addColorStop(0.3, rgba([190, 240, 255], 0.6 * (1 - q)));
+    g.addColorStop(1, rgba([120, 200, 255], 0));
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 3.5, 0, 7); ctx.fill();
+
+    for (let i = 0; i < 26; i++) {
+      const w = i * 0.965 + t * 0.4;
+      const d = (30 + (i % 6) * 26) * q * s * (0.7 + hash(i * 2.3) * 0.8);
+      const X = cx + Math.cos(w) * d, Y = cy + Math.sin(w) * d * 0.85 - q * 30 * s;
+      const rr = (2 + hash(i * 4.7) * 3.4) * s * (1 - q * 0.4);
+      ctx.fillStyle = i % 3 === 0 ? rgba([60, 70, 90], 0.8 * (1 - q))
+                                  : rgba([214, 240, 255], 0.6 * (1 - q));
+      ctx.beginPath(); ctx.arc(X, Y, rr, 0, 7); ctx.fill();
+    }
+  }
+}
+
 function drawSternbild() {
   const p = sternAnteil();
   if (p < 0.004) return;
@@ -3050,7 +3106,12 @@ const AB_GALAXIEN = [
 function abspannMasse() {
   const lx = 0, rx = W, gx = W * 0.64;
   const oben = H * 0.24, unten = H * 0.94;
-  const py = y => unten - (unten - oben) * Math.min(1, y / PROFIL.max);
+  /* Im Meer zeigt die Achse nach unten: die Küste liegt oben, der Graben
+     unten. Aus derselben Kurve wird damit ein Abgrund statt eines Bergs –
+     gefüllt wird weiterhin unter der Linie, und das ist dann der Fels. */
+  const py = G_REGEL.meer
+    ? y => oben + (unten - oben) * Math.min(1, y / PROFIL.max)
+    : y => unten - (unten - oben) * Math.min(1, y / PROFIL.max);
   return { lx, rx, gx, oben, unten, py,
            pxAuf: i => lx + (gx - lx) * (i / PROFIL.n),
            pxAb: i => gx + (rx - gx) * (1 - i / PROFIL.n),
@@ -3112,7 +3173,8 @@ function zeichneKarte(ctx) {
      Galaxien gibt es Wasser, das nach oben hin dunkel wird, und Lichtstrahlen
      unten an der Oberfläche. */
   if (G_REGEL.meer) {
-    const w = ctx.createLinearGradient(0, unten, 0, oben - H * 0.24);
+    // Achse zeigt nach unten: oben die Oberfläche, unten der Graben
+    const w = ctx.createLinearGradient(0, oben, 0, unten);
     w.addColorStop(0, "#7fc4de");                    // Oberfläche
     w.addColorStop(bei(CFG.SNOWLINE), "#4e9fc0");
     w.addColorStop(bei(CFG.ICELINE), "#2f6f96");
@@ -3120,25 +3182,32 @@ function zeichneKarte(ctx) {
     w.addColorStop(bei(CFG.SPACELINE), "#0d2138");
     w.addColorStop(1, "#050c18");                    // Grabensohle
     ctx.fillStyle = w;
-    ctx.fillRect(lx - W, oben - H * 0.24, W * 3, unten - oben + H * 0.24);
-    // Lichtstrahlen unten, wo die Oberfläche liegt
+    ctx.fillRect(lx - W, 0, W * 3, H);
+    // Wasseroberfläche als welliges Band ganz oben
+    ctx.strokeStyle = "rgba(224,248,255,.55)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let x = lx; x <= rx; x += 14)
+      ctx.lineTo(x, oben + Math.sin(x * 0.021) * 3 + Math.sin(x * 0.008) * 4);
+    ctx.stroke();
+    // Lichtstrahlen von der Oberfläche nach unten
     for (let i = 0; i < 9; i++) {
       const px2 = lx + (rx - lx) * (i + 0.5) / 9 + (hash(i * 2.7) - 0.5) * 60;
-      const lang = (0.1 + hash(i * 4.3) * 0.16) * (unten - oben);
+      const lang = (0.12 + hash(i * 4.3) * 0.2) * (unten - oben);
       const br = 12 + hash(i * 6.1) * 22;
-      const gl = ctx.createLinearGradient(0, unten, 0, unten - lang);
+      const gl = ctx.createLinearGradient(0, oben, 0, oben + lang);
       gl.addColorStop(0, "rgba(200,240,255,.22)");
       gl.addColorStop(1, "rgba(190,235,255,0)");
       ctx.fillStyle = gl;
       ctx.beginPath();
-      ctx.moveTo(px2 - br * 0.4, unten); ctx.lineTo(px2 + br * 0.4, unten);
-      ctx.lineTo(px2 + br * 1.6, unten - lang); ctx.lineTo(px2 - br * 1.6, unten - lang);
+      ctx.moveTo(px2 - br * 0.4, oben); ctx.lineTo(px2 + br * 0.4, oben);
+      ctx.lineTo(px2 + br * 1.6, oben + lang); ctx.lineTo(px2 - br * 1.6, oben + lang);
       ctx.closePath(); ctx.fill();
     }
     // ein paar Schwebeteilchen statt Sternen
     ctx.fillStyle = "rgba(206,232,255,.28)";
     for (const s2 of AB_STERNE) {
-      const Y = oben - H * 0.2 + (unten - oben) * s2.y;
+      const Y = oben + (unten - oben) * s2.y;
       ctx.beginPath(); ctx.arc(lx + s2.x * (rx - lx), Y, s2.s * 0.8, 0, 7); ctx.fill();
     }
   } else {
@@ -3251,9 +3320,12 @@ function zeichneKarte(ctx) {
     ctx.fillRect(cx - halb, unten - hoehe, halb * 2, hoehe * 0.34);
     ctx.restore();
   };
-  nebenberg(W * 0.20, W * 0.30, hMax * 0.42, [38, 52, 84], 0.75);
-  nebenberg(W * 0.90, W * 0.26, hMax * 0.36, [34, 47, 78], 0.75);
-  nebenberg(W * 0.47, W * 0.24, hMax * 0.30, [44, 58, 92], 0.6);
+  // Im Meer stünden sie auf dem Kopf im Wasser – dort gibt es sie nicht.
+  if (!G_REGEL.meer) {
+    nebenberg(W * 0.20, W * 0.30, hMax * 0.42, [38, 52, 84], 0.75);
+    nebenberg(W * 0.90, W * 0.26, hMax * 0.36, [34, 47, 78], 0.75);
+    nebenberg(W * 0.47, W * 0.24, hMax * 0.30, [44, 58, 92], 0.6);
+  }
 
   /* --- Der Berg selbst -------------------------------------------------- */
   const berg = new Path2D();
@@ -3263,7 +3335,9 @@ function zeichneKarte(ctx) {
   berg.lineTo(rx, unten);
   berg.closePath();
 
-  const farbverlauf = ctx.createLinearGradient(0, unten, 0, oben);
+  // im Meer läuft die Achse andersherum, also auch der Verlauf
+  const farbverlauf = G_REGEL.meer ? ctx.createLinearGradient(0, oben, 0, unten)
+                                   : ctx.createLinearGradient(0, unten, 0, oben);
   if (G_REGEL.meer) {
     farbverlauf.addColorStop(0, "#d8cf9a");                    // Ufersand
     farbverlauf.addColorStop(bei(CFG.SNOWLINE), "#8f9a6e");    // Seegras
@@ -3351,10 +3425,11 @@ function zeichneKarte(ctx) {
   }
   ctx.stroke();
 
-  // Startdorf am linken Fuß: drei Dächer, mehr braucht es nicht
+  // Startdorf am linken Fuß: drei Dächer, mehr braucht es nicht. Im Meer liegt
+  // dort die Wasserlinie – Häuser würden im Wasser schweben.
   const dy = py(PROFIL.y[0]);
   ctx.fillStyle = rgba([236, 226, 206], 0.9);
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < (G_REGEL.meer ? 0 : 3); i++) {
     const hx = lx + W * 0.02 + i * 11, hh = 7 + (i % 2) * 3;
     ctx.fillRect(hx, dy - hh, 8, hh);
     ctx.beginPath();
@@ -3516,11 +3591,14 @@ function beschriftung(u, M) {
   ctx.fillStyle = rgba([214, 226, 245], 0.75 * bt);
   // beide auf dieselbe Grundlinie unter die Karte: über dem Gipfel steht das
   // Sternbild, dort wäre die Zahl im Weg
-  const zeile = Math.min(H - 8, M.py(PROFIL.y[0]) + 26);
   const tief = istMeer();
-  ctx.fillText(tief ? "Küste" : "Dorf", M.lx + W * 0.045, zeile);
+  /* Im Meer liegt die Küste oben und der Graben unten – die beiden Marken
+     stehen deshalb nicht mehr auf einer Linie, sondern jede an ihrem Ende. */
+  const start = Math.min(H - 8, M.py(PROFIL.y[0]) + (tief ? 20 : 26));
+  const ziel = tief ? Math.min(H - 8, M.gy + 22) : start;
+  ctx.fillText(tief ? "Küste" : "Dorf", M.lx + W * 0.045, start);
   ctx.fillText((tief ? "Grund · " : "Gipfel · ") +
-               Math.round(CFG.GIPFEL / CFG.PPM) + " m", M.gx, zeile);
+               Math.round(CFG.GIPFEL / CFG.PPM) + " m", M.gx, ziel);
   ctx.textAlign = "left";
 }
 
@@ -5469,8 +5547,16 @@ function drawMeer() {
                           // Gebietsanteile sind unter Wasser alle null
   drawCans();
   drawFische(FISCHE_NAH, 0.92, 2.1);  // große Einzelfische dicht an der Kamera
-  drawBike();
-  drawSternbild();
+  // Beim Finale wird das Bike zusammengedrückt, nicht nur ausgeblendet
+  const q = sternAnteil();
+  if (q > 0.004) {
+    const cx = sx(bikeX()), cy = sy((rear.y + front.y) / 2), k = 1 - q * 0.85;
+    ctx.save();
+    ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-cx, -cy);
+    drawBike();
+    ctx.restore();
+  } else drawBike();
+  drawImplosion();
   drawAbspann();
 }
 
@@ -5568,7 +5654,8 @@ function showOverlay(isOver) {
     el("sub").textContent = G.geschafft
       ? (istMeer()
           ? CHARS[charIdx].name + " ist " + Math.round(CFG.GIPFEL / CFG.PPM)
-            + " m tief bis auf die Grabensohle getaucht. Tiefer geht es nicht."
+            + " m tief bis auf die Grabensohle gekommen – dort hat der Druck "
+            + "Bike und Anzug zusammengedrückt. Tiefer geht es nicht."
           : CHARS[charIdx].name + " hat den Gipfel auf " + Math.round(CFG.GIPFEL / CFG.PPM)
             + " m genommen, ist ins All abgesprungen und steht jetzt als Sternbild "
             + "am Himmel. Höher geht es nicht.")

@@ -418,13 +418,18 @@ const CFG = {
   FINAL_DROP: 1.3,     // so steil fällt der Berg hinter dem Gipfel ab
   WELTALL_ZEIT: 6,     // s Schwebeflug nach dem Absprung, dann kommt der Abspann
   ABSPANN_ZEIT: 8,     // s Rückblick: auszoomen, Route nachzeichnen, Sternbild
-  // Mitflug: der Heli hängt hinter und über einer Schanzenkante. Ausgemessen
-  // über 40 zufällige Welten: der Scheitel eines guten Sprungs liegt im Mittel
-  // 360 px hinter und 170 px über der Kante. 320/150 liegt knapp darunter –
-  // mit Boost erwischt ihn ein sauberer Anflug in 67 % der Welten, ohne Boost
-  // nur in 26 %. 300 px Höhe wären fast nie erreichbar gewesen.
-  HELI_DX: 320,        // px hinter der Kante
-  HELI_DY: 150,        // px über der Kante
+  /* Mitflug: der Heli hängt hinter und über einer Schanzenkante.
+
+     Ausgemessen über 30 zufällige Welten, nur der erste zusammenhängende Flug
+     nach der Kante und mit abgeschalteten Helis (sonst zählt der Mitflug selbst
+     als Flugbahn): der Scheitel liegt im Median 227 px hinter und nur 102 px
+     über der Kante, Spanne 43-227 px Höhe.
+
+     Bei 150 px Höhe erwischte ihn ein sauberer Anflug mit Boost in 63 % der
+     Welten. 200 px liegt deutlich über dem mittleren Scheitel: 37 % mit Boost,
+     0 % ohne. Man braucht also beides – den Boost und einen guten Absprung. */
+  HELI_DX: 300,        // px hinter der Kante
+  HELI_DY: 200,        // px über der Kante
   HELI_R: 74,          // Fangradius um die Kabine
   HELI_ZEIT: 2.4,      // s Mitflug bis zum Absetzen
   HELI_GEWINN: 80,     // m Höhe, die der Mitflug bringt
@@ -2989,13 +2994,13 @@ function heliBild(px, py, s, t) {
 
 function drawHelis() {
   const t = performance.now() / 1000;
-  const s = SCALE * 1.5;
+  const s = SCALE * 2.2;
   if (G.heli !== null) {                    // trägt gerade: hängt über dem Bike
     const bx = (rear.x + front.x) / 2, by = (rear.y + front.y) / 2;
-    heliBild(sx(bx), sy(by + 46), s, t);
-    ctx.strokeStyle = "rgba(44,52,70,.9)"; ctx.lineWidth = 2 * SCALE;
+    heliBild(sx(bx), sy(by + 64), s, t);
+    ctx.strokeStyle = "rgba(44,52,70,.9)"; ctx.lineWidth = 2.6 * SCALE;
     ctx.beginPath();
-    ctx.moveTo(sx(bx), sy(by + 24)); ctx.lineTo(sx(bx), sy(by + 8));
+    ctx.moveTo(sx(bx), sy(by + 32)); ctx.lineTo(sx(bx), sy(by + 8));
     ctx.stroke();
     return;
   }

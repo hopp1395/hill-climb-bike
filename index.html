@@ -1513,6 +1513,8 @@ function reset() {
   G.weltall = null; G.abspann = null; G.geschafft = false;
   G.heli = null;
   for (const h of HELIS) h.genutzt = false;
+  // Berg und Zwischenbild des Abspanns gehören zur alten Welt – die ist weg
+  PROFIL = null; ABKARTE = null;
   G.boost = 100; G.boosting = false; G.boostIdle = 0;
   G.airTime = 0; G.spinAcc = 0; G.touch = 0;
   G.lastAng = Math.atan2(front.y - rear.y, front.x - rear.x);
@@ -2623,36 +2625,69 @@ const AB_GALAXIEN = [
   { x: 0.45, y: 0.13, r: 0.6,  dreh: 1.9,  ton: 0.45 },
 ];
 
+/* Maße der Schlussgrafik. Der Gipfel sitzt bei 64 % der Breite, danach fällt
+   der Berg gespiegelt und gestaucht zur rechten Seite ab – so wird es eine
+   Bergsilhouette und kein abgeschnittener Anstieg. Oben bleibt Luft für das
+   Sternbild. */
+function abspannMasse() {
+  const lx = 0, rx = W, gx = W * 0.64;
+  const oben = H * 0.24, unten = H * 0.94;
+  const py = y => unten - (unten - oben) * Math.min(1, y / PROFIL.max);
+  return { lx, rx, gx, oben, unten, py,
+           pxAuf: i => lx + (gx - lx) * (i / PROFIL.n),
+           pxAb: i => gx + (rx - gx) * (1 - i / PROFIL.n),
+           gy: py(PROFIL.y[PROFIL.n]),
+           bei: h => Math.max(0, Math.min(1, h / PROFIL.max)) };
+}
+
+/* Himmel, Sterne, Galaxien, Berg und Dorf ändern sich während des Abspanns
+   nicht – sie einmal in ein Zwischenbild zu rendern spart pro Bild rund 18 ms.
+   Verworfen wird es bei neuer Fenstergröße und bei jedem neuen Lauf. */
+let ABKARTE = null, ABKARTE_W = 0, ABKARTE_H = 0;
+
+function abspannKarte() {
+  if (ABKARTE && ABKARTE_W === W && ABKARTE_H === H) return ABKARTE;
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  const c = cv.getContext("2d");
+  c.setTransform(DPR, 0, 0, DPR, 0, 0);
+  zeichneKarte(c);
+  ABKARTE = cv; ABKARTE_W = W; ABKARTE_H = H;
+  return cv;
+}
+
 function drawAbspann() {
   const u = G.abspann;
   if (u === null) return;
   const ein = smooth(u / 1.2);
   if (ein < 0.004) return;
   if (!PROFIL) bauProfil();
+  const M = abspannMasse();
+  const { gx, gy, py, pxAuf } = M;
 
   // Schleier legt die Spielwelt still – am Ende deckend, sonst geistert das
   // große Sternbild aus der Schwebeszene durch die Karte
   ctx.fillStyle = rgba([7, 11, 24], ein);
   ctx.fillRect(0, 0, W, H);
 
-  /* Das Schaubild reicht jetzt von Rand zu Rand und vom unteren bis fast an den
-     oberen Bildrand. Der Gipfel sitzt bei 64 % der Breite, danach fällt der
-     Berg zur rechten Seite wieder ab – gespiegelt und gestaucht, damit es eine
-     Bergsilhouette wird und kein abgeschnittener Anstieg. */
-  const lx = 0, rx = W, gx = W * 0.64;
-  // oben genug Luft lassen: darüber steht noch das Sternbild
-  const oben = H * 0.24, unten = H * 0.94;
-  const py = y => unten - (unten - oben) * Math.min(1, y / PROFIL.max);
-  const pxAuf = i => lx + (gx - lx) * (i / PROFIL.n);
-  const pxAb = i => gx + (rx - gx) * (1 - i / PROFIL.n);
-  const gy = py(PROFIL.y[PROFIL.n]);
-  const bei = h => Math.max(0, Math.min(1, h / PROFIL.max));
-
   ctx.save();
   // Auszoomen: anfangs steht der Gipfel formatfüllend im Bild, dann weicht er
   // zurück, bis der ganze Berg hineinpasst.
   const z = 1 + 11 * (1 - smooth(u / 1.7));
   ctx.translate(gx, gy); ctx.scale(z, z); ctx.translate(-gx, -gy);
+  ctx.globalAlpha = ein;
+  ctx.drawImage(abspannKarte(), 0, 0, W, H);
+  ctx.globalAlpha = 1;
+  zeichneAnimiertes(u, M, ein);
+  ctx.restore();
+  beschriftung(u, M);
+}
+
+/* Alles, was sich während des Abspanns nicht bewegt. Bekommt den Zielkontext
+   übergeben, weil es in ein Zwischenbild gerendert wird. */
+function zeichneKarte(ctx) {
+  const M = abspannMasse();
+  const { lx, rx, gx, oben, unten, py, pxAuf, pxAb, bei } = M;
 
   /* --- Hintergrund je Schicht ------------------------------------------
      Von unten nach oben: Taghimmel über dem Tal, Dämmerung über Schnee und
@@ -2723,7 +2758,33 @@ function drawAbspann() {
   ctx.fillStyle = vg;
   ctx.fillRect(lx, py(CFG.SPACELINE), rx - lx, yLava - py(CFG.SPACELINE));
 
+  /* --- Nebengipfel: geben dem Hauptberg Tiefe ---------------------------- */
+  const nebenberg = (cx, halb, hoehe, farbe, a) => {
+    ctx.fillStyle = rgba(farbe, a);
+    ctx.beginPath();
+    ctx.moveTo(cx - halb, unten);
+    for (let k = 0; k <= 56; k++) {
+      const t = k / 56 * 2 - 1;
+      const f = Math.max(0, 1 - Math.pow(Math.abs(t), 1.5));
+      const rau = (vnoise(k * 0.7 + cx * 0.013) - 0.5) * 0.16 * f;
+      ctx.lineTo(cx + t * halb, unten - hoehe * (f + rau));
+    }
+    ctx.lineTo(cx + halb, unten);
+    ctx.closePath(); ctx.fill();
+  };
+  const hMax = unten - oben;
+  nebenberg(W * 0.20, W * 0.30, hMax * 0.42, [38, 52, 84], 0.75);
+  nebenberg(W * 0.90, W * 0.26, hMax * 0.36, [34, 47, 78], 0.75);
+  nebenberg(W * 0.47, W * 0.24, hMax * 0.30, [44, 58, 92], 0.6);
+
   /* --- Der Berg selbst -------------------------------------------------- */
+  const berg = new Path2D();
+  berg.moveTo(lx, unten);
+  for (let i = 0; i <= PROFIL.n; i++) berg.lineTo(pxAuf(i), py(PROFIL.y[i]));
+  for (let i = PROFIL.n; i >= 0; i--) berg.lineTo(pxAb(i), py(PROFIL.y[i]));
+  berg.lineTo(rx, unten);
+  berg.closePath();
+
   const farbverlauf = ctx.createLinearGradient(0, unten, 0, oben);
   farbverlauf.addColorStop(0, "#2f4a35");
   farbverlauf.addColorStop(bei(CFG.SNOWLINE), "#4d6a52");
@@ -2732,20 +2793,80 @@ function drawAbspann() {
   farbverlauf.addColorStop(bei(CFG.SPACELINE), "#7a4038");
   farbverlauf.addColorStop(1, "#2a2340");
   ctx.fillStyle = farbverlauf;
+  ctx.fill(berg);
+
+  ctx.save();
+  ctx.clip(berg);
+  // Licht von oben rechts – dieselbe Sonne wie im Spiel. Die Abstiegsflanke
+  // liegt im Licht, der lange Anstieg links im Schatten: das gibt dem Umriss
+  // erst ein Volumen.
+  const licht = ctx.createLinearGradient(gx - hMax * 0.5, oben, gx + hMax * 0.7, unten);
+  licht.addColorStop(0, "rgba(10,16,34,.34)");
+  licht.addColorStop(0.5, "rgba(10,16,34,0)");
+  licht.addColorStop(1, "rgba(255,238,205,.20)");
+  ctx.fillStyle = licht;
+  ctx.fillRect(lx, oben - hMax * 0.3, rx - lx, unten - oben + hMax * 0.3);
+
+  /* Grate: kurze Schattenkeile, die vom Kamm ein Stück den Hang hinunter
+     auslaufen. Sie dürfen nur angedeutet sein – über die ganze Flanke gezogen
+     sahen sie aus wie Kratzer im Bild. */
+  ctx.lineCap = "round";
+  const grat = (kx, ky, richtung, k) => {
+    const lang = (unten - ky) * (0.16 + hash(k * 3.3 + 1) * 0.14);
+    const g = ctx.createLinearGradient(kx, ky, kx + richtung * lang * 0.4, ky + lang);
+    g.addColorStop(0, "rgba(18,26,48,.16)");
+    g.addColorStop(1, "rgba(18,26,48,0)");
+    ctx.strokeStyle = g;
+    ctx.lineWidth = 3 + hash(k * 5.1) * 5;
+    ctx.beginPath();
+    ctx.moveTo(kx, ky);
+    ctx.quadraticCurveTo(kx + richtung * lang * 0.1, ky + lang * 0.55,
+                         kx + richtung * lang * 0.4, ky + lang);
+    ctx.stroke();
+  };
+  for (let k = 0; k < 7; k++) {
+    const i = Math.round(PROFIL.n * (0.2 + k * 0.11));
+    grat(pxAuf(i), py(PROFIL.y[i]), -1, k);
+  }
+  for (let k = 0; k < 4; k++) {
+    const i = Math.round(PROFIL.n * (0.3 + k * 0.17));
+    grat(pxAb(i), py(PROFIL.y[i]), 1, k + 9);
+  }
+
+  // Schneegrenze: nur eine schmale, wellige Kante. Eine flächige Lasur darüber
+  // hat die Gebietsfarben komplett ausgewaschen.
+  const ys = py(CFG.SNOWLINE);
+  ctx.strokeStyle = "rgba(240,247,255,.34)";
+  ctx.lineWidth = 2.4;
   ctx.beginPath();
-  ctx.moveTo(lx, unten);
-  for (let i = 0; i <= PROFIL.n; i++) ctx.lineTo(pxAuf(i), py(PROFIL.y[i]));
-  for (let i = PROFIL.n; i >= 0; i--) ctx.lineTo(pxAb(i), py(PROFIL.y[i]));
-  ctx.lineTo(rx, unten);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = rgba([228, 238, 255], 0.28 * ein);
-  ctx.lineWidth = 1.2;
+  for (let x = lx; x <= rx; x += 16) {
+    const Y = ys + Math.sin(x * 0.013) * 7 + (vnoise(x * 0.02) - 0.5) * 12;
+    x === lx ? ctx.moveTo(x, Y) : ctx.lineTo(x, Y);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // Kammlinie: auf der Lichtseite hell, auf der Schattenseite nur angedeutet
+  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = rgba([210, 226, 250], 0.3);
+  ctx.beginPath();
+  for (let i = 0; i <= PROFIL.n; i++) {
+    const X = pxAuf(i), Y = py(PROFIL.y[i]);
+    i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y);
+  }
+  ctx.stroke();
+  ctx.strokeStyle = rgba([255, 243, 214], 0.6);
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  for (let i = PROFIL.n; i >= 0; i--) {
+    const X = pxAb(i), Y = py(PROFIL.y[i]);
+    i === PROFIL.n ? ctx.moveTo(X, Y) : ctx.lineTo(X, Y);
+  }
   ctx.stroke();
 
   // Startdorf am linken Fuß: drei Dächer, mehr braucht es nicht
   const dy = py(PROFIL.y[0]);
-  ctx.fillStyle = rgba([236, 226, 206], 0.9 * ein);
+  ctx.fillStyle = rgba([236, 226, 206], 0.9);
   for (let i = 0; i < 3; i++) {
     const hx = lx + W * 0.02 + i * 11, hh = 7 + (i % 2) * 3;
     ctx.fillRect(hx, dy - hh, 8, hh);
@@ -2753,6 +2874,11 @@ function drawAbspann() {
     ctx.moveTo(hx - 2, dy - hh); ctx.lineTo(hx + 4, dy - hh - 6);
     ctx.lineTo(hx + 10, dy - hh); ctx.closePath(); ctx.fill();
   }
+}
+
+/* Was sich bewegt: die wachsende Route und das Sternbild über dem Gipfel. */
+function zeichneAnimiertes(u, M, ein) {
+  const { gx, gy, py, pxAuf } = M;
 
   // Die gefahrene Linie wächst vom Dorf zur Spitze
   const lauf = smooth((u - 1.9) / 3.4);
@@ -2815,21 +2941,21 @@ function drawAbspann() {
     }
     ctx.restore();
   }
-  ctx.restore();
+}
 
-  // Beschriftung außerhalb der Zoomfahrt, damit sie lesbar bleibt
+// Beschriftung außerhalb der Zoomfahrt, damit sie lesbar bleibt
+function beschriftung(u, M) {
   const bt = smooth((u - 2.2) / 1.2);
-  if (bt > 0.01) {
-    ctx.font = "600 " + Math.round(12 * Math.max(1, SCALE)) + "px system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillStyle = rgba([214, 226, 245], 0.75 * bt);
-    // beide auf dieselbe Grundlinie unter die Karte: über dem Gipfel steht das
-    // Sternbild, dort wäre die Zahl im Weg
-    const zeile = Math.min(H - 8, py(PROFIL.y[0]) + 26);
-    ctx.fillText("Dorf", lx + W * 0.045, zeile);
-    ctx.fillText("Gipfel · 1000 m", gx, zeile);
-    ctx.textAlign = "left";
-  }
+  if (bt <= 0.01) return;
+  ctx.font = "600 " + Math.round(12 * Math.max(1, SCALE)) + "px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillStyle = rgba([214, 226, 245], 0.75 * bt);
+  // beide auf dieselbe Grundlinie unter die Karte: über dem Gipfel steht das
+  // Sternbild, dort wäre die Zahl im Weg
+  const zeile = Math.min(H - 8, M.py(PROFIL.y[0]) + 26);
+  ctx.fillText("Dorf", M.lx + W * 0.045, zeile);
+  ctx.fillText("Gipfel · 1000 m", M.gx, zeile);
+  ctx.textAlign = "left";
 }
 
 /* Mitflug-Heli. Er schwebt an seiner Stelle und wippt leicht; während er trägt,

@@ -624,6 +624,9 @@ function setzeGrad(name) {
 
 // Getrennte Rekorde: ein 500-m-Lauf soll den 1000-m-Rekord nicht überschreiben
 function bestKey() { return GRAD === "normal" ? "hcb.best" : "hcb.best." + GRAD; }
+// 1 bei Normal, 0,5 bei Einfach – überall dort, wo Abstände in Welthöhe zur
+// Streckenlänge passen müssen (Farbstufen, Teleport-Abstände).
+function gradSkala() { return CFG.GIPFEL / CFG_BASIS.GIPFEL; }
 function ladeBest() {
   try { G.best = Math.max(0, parseInt(localStorage.getItem(bestKey()) || "0", 10) || 0); }
   catch (e) { G.best = 0; }
@@ -2343,7 +2346,7 @@ let RAMP_BODY = [], RAMP_EDGE = [], RAMP_DECK = [];
 
 function bauRampen() {
   const SL = CFG.SNOWLINE, IL = CFG.ICELINE, VL = CFG.LAVALINE, WL = CFG.SPACELINE;
-  const s = v => v * (CFG.GIPFEL / CFG_BASIS.GIPFEL);   // 1 bei Normal, 0,5 bei Einfach
+  const s = v => v * gradSkala();
   RAMP_BODY = [
     [SL - CFG.SNOW_FADE, "#5d4a3a"],       // Fels
     [SL - s(120),        "#a9b3c2"],       // Übergang
@@ -5493,16 +5496,23 @@ const DBG_ACT = [
     applyBuffs(); renderCard(); updateHUD();
     toast("Spielstand gelöscht");
   }],
-  ["Rauf in den Schnee", "s", () => tpAbove(CFG.SNOWLINE + 600, "kein Schnee in Reichweite")],
-  // Nicht direkt auf die Grenze, sondern 1200 px darüber: dort ist das Gebiet
-  // zu zwei Dritteln eingeblendet. Genau auf der Grenze sähe es noch aus wie
-  // das Gebiet darunter, und man denkt, der Knopf tut nichts.
-  // Nur die drei Gebiete, die auf dem Berg liegen. Der schwerelose Teil hat
-  // kein Gelände über sich und bekommt darum seinen eigenen Knopf.
-  ...ZONES.slice(0, 3).map((z, i) => [
-    "Rauf in die " + z.name, ["e", "v", "w"][i],
+  ["Rauf in den Schnee", "s",
+   () => tpAbove(CFG.SNOWLINE + 600 * gradSkala(), "kein Schnee in Reichweite")],
+  /* Nicht direkt auf die Grenze, sondern ein Stück darüber: dort ist das Gebiet
+     zu zwei Dritteln eingeblendet. Genau auf der Grenze sähe es noch aus wie
+     das Gebiet darunter, und man denkt, der Knopf tut nichts.
+     Nur die drei Gebiete, die auf dem Berg liegen. Der schwerelose Teil hat
+     kein Gelände über sich und bekommt darum seinen eigenen Knopf.
+
+     ZONES[i] wird erst beim Klick gelesen, nicht beim Bauen der Liste: der
+     Gradwechsel legt ein neues ZONES-Array an, und die Knöpfe zielten sonst
+     weiter auf die Höhen von "Normal" – im leichten Grad landete man damit im
+     falschen Gebiet oder gar nicht. */
+  ...[0, 1, 2].map(i => [
+    "Rauf in die " + ZONES[i].name, ["e", "v", "w"][i],
     () => {
-      if (tpAbove(z.y + 1200, "keine " + z.name + " in Reichweite") === null) return;
+      const z = ZONES[i];
+      if (tpAbove(z.y + 1200 * gradSkala(), "keine " + z.name + " in Reichweite") === null) return;
       G.zone = Math.max(G.zone, i + 1);       // Meldung nicht doppelt bringen
       toast(z.icon + " " + z.name + " · " +
             Math.round((rear.y + front.y) / 2 / CFG.PPM) + " m");

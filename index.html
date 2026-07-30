@@ -179,20 +179,22 @@
   @media (max-height:520px) and (min-width:640px){
     #overlay{padding:8px}
     #panel{max-width:min(780px,96vw);display:grid;column-gap:18px;
-      grid-template-columns:1.06fr .94fr;padding:11px 15px 13px}
+      grid-template-columns:1.06fr .94fr;padding:9px 15px 10px}
     #panel h1{grid-area:1/1/2/3;font-size:20px;margin-bottom:1px}
     #sub{grid-area:2/1/3/3;font-size:11.5px;line-height:1.4;margin-bottom:7px}
-    #gradWahl{grid-area:3/1/4/2;margin-bottom:6px}
+    #katWahl{grid-area:3/1/4/2;margin-bottom:5px}
+    #gradWahl{grid-area:4/1/5/2;margin-bottom:6px}
     #gradText{display:none}          /* die Knopf-Untertitel sagen es schon */
-    #charLbl{grid-area:4/1/5/2;margin-bottom:6px}
-    #chars{grid-area:5/1/6/2}
-    #buff{grid-area:6/1/7/2;margin-bottom:0}
+    #charLbl{grid-area:5/1/6/2;margin-bottom:6px}
+    #chars{grid-area:6/1/7/2}
+    #buff{grid-area:7/1/8/2;margin-bottom:0}
     /* Tipps (im Menü) und Statistik (nach dem Lauf) teilen sich dieselbe Zelle –
        es ist ohnehin immer nur eins von beidem sichtbar. */
-    .tips{grid-area:3/2/6/3;margin:0;align-self:start}
-    #stats{grid-area:3/2/6/3;flex-wrap:wrap;margin:0;align-self:start}
+    .tips{grid-area:3/2/7/3;margin:0;align-self:start}
+    #stats{grid-area:3/2/7/3;flex-wrap:wrap;margin:0;align-self:start}
     #stats .card{flex:1 1 44%}
-    #btn{grid-area:6/2/7/3;align-self:end;margin-top:0}
+    #btn{grid-area:7/2/8/3;align-self:end;margin-top:0}
+    .kat{padding:4px 6px;font-size:11px}
     /* über die ID, sonst gewinnt die allgemeine .char-Regel weiter unten und
        die sechs Fahrer brechen in eine zweite Zeile um */
     #chars .char{width:44px}
@@ -210,15 +212,25 @@
     #panel h1{font-size:18px}
     #buff{padding:7px 10px 8px}
     .tips{font-size:11px;line-height:1.5;padding:8px 10px}
+    #katWahl{margin-bottom:3px}
+    .kat{padding:3px 6px;font-size:10.5px}
     #gradWahl{margin-bottom:4px}
     #gradWahl .grad{padding:4px 6px}
-    /* der Endbildschirm zeigt zusätzlich die Statistik und war sonst 5 px zu hoch */
-    #stats .card{padding:4px 8px}
-    #stats .val{font-size:15px}
+    #buff{padding:6px 9px 7px}
+    .tips{padding:7px 9px}
+    /* der Endbildschirm zeigt zusätzlich die Statistik und war sonst zu hoch */
+    #stats .card{padding:3px 7px}
+    #stats .val{font-size:14px}
     #stats .lbl{font-size:9px}
   }
 
-  /* ---------- Schwierigkeitsgrad ---------- */
+  /* ---------- Kategorie und Modus ---------- */
+  #katWahl{display:flex;gap:6px;margin-bottom:6px}
+  .kat{flex:1;padding:6px 8px;border-radius:10px;cursor:pointer;font:inherit;
+    font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.12);opacity:.7;
+    transition:opacity .12s,border-color .12s,background .12s}
+  .kat.on{opacity:1;background:rgba(126,224,161,.13);border-color:rgba(126,224,161,.5)}
   #gradWahl{display:flex;gap:8px;margin-bottom:7px}
   .grad{flex:1;padding:9px 8px;border-radius:12px;cursor:pointer;font:inherit;color:#fff;
     background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
@@ -362,11 +374,8 @@
       <div class="card"><div class="lbl">Coins</div><div class="val" id="sCoins">0</div></div>
       <div class="card"><div class="lbl">Rekord</div><div class="val" id="sBest">0</div></div>
     </div>
-    <div id="gradWahl">
-      <button class="grad" data-grad="einfach"><b>🌿 Einfach</b><span>500 m · zahm</span></button>
-      <button class="grad" data-grad="normal"><b>🔥 Normal</b><span>1000 m · alles</span></button>
-      <button class="grad" data-grad="meer"><b>🌊 Meer</b><span>1000 m tief</span></button>
-    </div>
+    <div id="katWahl"></div>
+    <div id="gradWahl"></div>
     <div id="gradText"></div>
     <div id="charLbl">Fahrer <span id="coinBox">🪙 <span id="coinCount">0</span></span></div>
     <div id="chars"></div>
@@ -621,6 +630,15 @@ const GRADE = {
     adler: true, ufo: true, komet: true, heli: true,
     leben: 0,
   },
+  /* Rennen: dieselbe Strecke wie Normal, aber der beste Lauf fährt als Geist
+     mit. Nur hier wird aufgezeichnet und wiedergegeben. */
+  geist: {
+    name: "Geisterrennen", icon: "👻", geist: true,
+    text: "1000 m gegen den eigenen Bestlauf · alle Gefahren, alles Wetter",
+    cfg: {}, diff: 1, wetter: null,
+    adler: true, ufo: true, komet: true, heli: true,
+    leben: 0,
+  },
   /* Sondermodus: dieselbe Strecke, nur andersherum. Statt zum höchsten Punkt
      geht es zum tiefsten – 1000 m hinunter auf den Grund. Das Höhenfeld wird
      dafür nach dem Bauen gespiegelt; Steilwände, Schluchten, Brücken und
@@ -643,6 +661,21 @@ const GRADE = {
 // läuft darüber, damit es nur eine Stelle mit der Richtung gibt.
 function fortschritt(y) { return G_REGEL.meer ? -y : y; }
 function istMeer() { return !!G_REGEL.meer; }
+function istGeistrennen() { return !!G_REGEL.geist; }
+
+/* Die Auswahl im Startmenü ist zweistufig: erst die Kategorie, dann der Modus
+   darin. So bleibt die Liste kurz, auch wenn später mehr Rennen oder mehr
+   Sondermodi dazukommen. */
+const KATEGORIEN = [
+  { key: "normal",  name: "Normal",  icon: "🏔", grade: ["einfach", "normal"] },
+  { key: "rennen",  name: "Rennen",  icon: "🏁", grade: ["geist"] },
+  { key: "special", name: "Special", icon: "🌊", grade: ["meer"] },
+];
+let KAT = "normal";
+function katVon(grad) {
+  const k = KATEGORIEN.find(k => k.grade.includes(grad));
+  return k ? k.key : "normal";
+}
 
 let GRAD = "normal";
 let G_REGEL = GRADE.normal;
@@ -1566,7 +1599,7 @@ function speichereGeist() {
 // Position des Geistes zur aktuellen Laufzeit, oder null wenn er durch ist
 function geistX() {
   const sp = GEIST.spur;
-  if (!sp) return null;
+  if (!sp || !istGeistrennen()) return null;   // nur im Rennmodus
   const i = GEIST.t / GEIST_DT;
   if (i >= sp.length - 1) return null;
   const i0 = Math.floor(i), f = i - i0;
@@ -2057,11 +2090,14 @@ function update(dt) {
 
   // Wetter vor der Physik: Grip, Wind und Gravitation gelten für diesen Schritt.
   // Ein Blitz kann die Runde hier schon beenden.
-  // Geisterspur mitschreiben – fester Takt, damit der Index die Zeit ist
-  GEIST.t += dt;
-  while (GEIST.t >= GEIST.next) {
-    GEIST.auf.push(Math.round(bikeX()));
-    GEIST.next += GEIST_DT;
+  // Geisterspur mitschreiben – fester Takt, damit der Index die Zeit ist.
+  // Nur im Rennmodus, sonst überschriebe ein normaler Lauf den Gegner.
+  if (istGeistrennen()) {
+    GEIST.t += dt;
+    while (GEIST.t >= GEIST.next) {
+      GEIST.auf.push(Math.round(bikeX()));
+      GEIST.next += GEIST_DT;
+    }
   }
 
   updateWeather(dt);
@@ -6371,23 +6407,57 @@ addEventListener("blur", () => {
   padL.classList.remove("on"); padR.classList.remove("on"); boostBox.classList.remove("on");
 });
 
-/* Schwierigkeitsgrad wählen. Die Wahl gilt erst für den nächsten Lauf und
-   wird gemerkt; Rekord und HUD stellen sich sofort auf den Grad um. */
+/* Zweistufige Auswahl: Kategorie oben, Modus darunter. Die Wahl gilt erst für
+   den nächsten Lauf und wird gemerkt; Rekord und HUD stellen sich sofort um. */
+const KURZ = { einfach: "500 m · zahm", normal: "1000 m · alles",
+               geist: "gegen den Bestlauf", meer: "1000 m tief" };
+
+function renderKat() {
+  const kw = el("katWahl");
+  kw.innerHTML = "";
+  for (const k of KATEGORIEN) {
+    const b = document.createElement("button");
+    b.className = "kat" + (k.key === KAT ? " on" : "");
+    b.textContent = k.icon + " " + k.name;
+    b.onmousedown = e => e.preventDefault();
+    b.onclick = () => {
+      if (G.state === "play") return;
+      KAT = k.key;
+      try { localStorage.setItem("hcb.kat", KAT); } catch (e) {}
+      // erster Modus der Kategorie, falls der aktuelle nicht dazugehört
+      if (!k.grade.includes(GRAD)) { setzeGrad(k.grade[0]); applyBuffs(); }
+      renderKat(); renderGrad(); renderCard();
+    };
+    kw.appendChild(b);
+  }
+}
+
 function renderGrad() {
-  for (const b of document.querySelectorAll(".grad"))
-    b.classList.toggle("on", b.dataset.grad === GRAD);
+  const kat = KATEGORIEN.find(k => k.key === KAT) || KATEGORIEN[0];
+  const gw = el("gradWahl");
+  gw.innerHTML = "";
+  for (const g of kat.grade) {
+    const r = GRADE[g];
+    const b = document.createElement("button");
+    b.className = "grad" + (g === GRAD ? " on" : "");
+    b.innerHTML = "<b>" + r.icon + " " + r.name + "</b><span>" + (KURZ[g] || "") + "</span>";
+    b.onmousedown = e => e.preventDefault();
+    b.onclick = () => {
+      if (G.state === "play") return;
+      setzeGrad(g); applyBuffs();          // Leben hängen am Modus
+      renderGrad(); renderCard();
+    };
+    gw.appendChild(b);
+  }
   el("gradText").textContent = G_REGEL.text;
   updateHUD();
 }
-for (const b of document.querySelectorAll(".grad"))
-  b.addEventListener("click", () => {
-    if (G.state === "play") return;
-    setzeGrad(b.dataset.grad);
-    applyBuffs();                 // Leben hängen am Grad
-    renderGrad(); renderCard();
-  });
+
 try { setzeGrad(localStorage.getItem("hcb.grad") || "normal"); } catch (e) { setzeGrad("normal"); }
-renderGrad();
+try { KAT = localStorage.getItem("hcb.kat") || katVon(GRAD); } catch (e) { KAT = katVon(GRAD); }
+// gespeicherte Kategorie und Modus können auseinanderlaufen – Modus gewinnt
+if (!(KATEGORIEN.find(k => k.key === KAT) || {}).grade?.includes(GRAD)) KAT = katVon(GRAD);
+renderKat(); renderGrad();
 
 el("btn").addEventListener("click", start);
 

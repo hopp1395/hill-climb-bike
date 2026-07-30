@@ -306,7 +306,7 @@
 <div id="hud">
   <div id="left">
     <div class="card">
-      <div class="lbl">Höhe</div>
+      <div class="lbl" id="hHeightLbl">Höhe</div>
       <div class="val" id="hHeight">0<small> m</small></div>
       <div class="lbl" id="hLives" style="display:none;color:#7ee0a1;opacity:.9">🛡 Schutzengel</div>
     </div>
@@ -356,7 +356,7 @@
     <h1 id="title">Hill Climb <em>Bike</em></h1>
     <div id="sub">Fahr so hoch du kannst – je höher, desto mehr ist jeder Meter wert.</div>
     <div id="stats">
-      <div class="card"><div class="lbl">Höhe</div><div class="val" id="sHeight">0<small> m</small></div></div>
+      <div class="card"><div class="lbl" id="sHeightLbl">Höhe</div><div class="val" id="sHeight">0<small> m</small></div></div>
       <div class="card"><div class="lbl">Punkte</div><div class="val" id="sScore">0</div></div>
       <div class="card"><div class="lbl">Coins</div><div class="val" id="sCoins">0</div></div>
       <div class="card"><div class="lbl">Rekord</div><div class="val" id="sBest">0</div></div>
@@ -364,6 +364,7 @@
     <div id="gradWahl">
       <button class="grad" data-grad="einfach"><b>🌿 Einfach</b><span>500 m · zahm</span></button>
       <button class="grad" data-grad="normal"><b>🔥 Normal</b><span>1000 m · alles</span></button>
+      <button class="grad" data-grad="meer"><b>🌊 Meer</b><span>1000 m tief</span></button>
     </div>
     <div id="gradText"></div>
     <div id="charLbl">Fahrer <span id="coinBox">🪙 <span id="coinCount">0</span></span></div>
@@ -617,7 +618,28 @@ const GRADE = {
     adler: true, ufo: true, komet: true, heli: true,
     leben: 0,
   },
+  /* Sondermodus: dieselbe Strecke, nur andersherum. Statt zum höchsten Punkt
+     geht es zum tiefsten – 1000 m hinunter auf den Grund. Das Höhenfeld wird
+     dafür nach dem Bauen gespiegelt; Steilwände, Schluchten, Brücken und
+     Schanzen bleiben weg, weil sie gespiegelt keinen Sinn ergeben (eine
+     Schlucht würde zum Hügel und die Brücke spannte über nichts). */
+  meer: {
+    name: "Meer", icon: "🌊", meer: true,
+    text: "1000 m hinunter auf den Grund · Wasser statt Luft, kein Wetter",
+    /* Verlauf und Steigungsdeckel bleiben wie bei Normal: gedämpft erreichte
+       die Strecke die Zielhöhe gar nicht mehr, und ohne sie findet bauFinale
+       keinen Ansatz – der Graben fehlte dann komplett. */
+    cfg: { CAN_SPACING: 2600 },
+    diff: 1, wetter: [],
+    adler: false, ufo: false, komet: false, heli: false,
+    leben: 1,
+  },
 };
+
+// +1 = höher ist weiter, -1 = tiefer ist weiter. Alles, was Fortschritt misst,
+// läuft darüber, damit es nur eine Stelle mit der Richtung gibt.
+function fortschritt(y) { return G_REGEL.meer ? -y : y; }
+function istMeer() { return !!G_REGEL.meer; }
 
 let GRAD = "normal";
 let G_REGEL = GRADE.normal;
@@ -627,7 +649,12 @@ function setzeGrad(name) {
   GRAD = name;
   G_REGEL = GRADE[name];
   Object.assign(CFG, CFG_BASIS, G_REGEL.cfg);
-  ZONES = [
+  ZONES = G_REGEL.meer ? [
+    { y: -CFG.ICELINE,   icon: "🪸", name: "Riff" },
+    { y: -CFG.LAVALINE,  icon: "🌑", name: "Dämmerzone" },
+    { y: -CFG.SPACELINE, icon: "🦑", name: "Tiefsee" },
+    { y: -CFG.GIPFEL,    icon: "🕳", name: "Graben" },
+  ] : [
     { y: CFG.ICELINE,   icon: "❄️", name: "Eiszone" },
     { y: CFG.LAVALINE,  icon: "🌋", name: "Vulkanzone" },
     { y: CFG.SPACELINE, icon: "✨", name: "Sternenzone" },
@@ -776,6 +803,13 @@ function planFeatures() {
     const L = 260 + hash(k * 5.1 + SEED) * 140;
     WALLS.push({ x0, L, H: 0, target: 1.80 + hash(k * 9.9 + SEED) * 0.25 });
   }
+  /* Im Meer bleibt es bei den Steilwänden – gespiegelt werden daraus
+     Abbruchkanten, und die trägt der Abstieg gut. Sie sind ausserdem nötig:
+     ihre Stufen summieren sich, ohne sie kommt die Strecke nur auf 699 statt
+     1000 m und es gäbe gar keinen Graben. Schluchten, Schanzen und Lavabecken
+     fallen dagegen weg – eine gespiegelte Schlucht wäre ein Hügel und die
+     Brücke spannte über nichts. */
+  if (istMeer()) return;
   // Nur grobe Suchfenster – die genaue Stelle sucht buildTerrain, sobald das
   // Gelände steht: die Brücke soll da liegen, wo der Berg flach ist.
   for (let k = 0; ; k++) {
@@ -1031,6 +1065,13 @@ function buildTerrain() {
   for (let i = 0; i < TFIELD.length; i++) TFIELD[i] += jumpRise(i * TSTEP);
 
   bauFinale();
+  /* Meer: das fertige Höhenfeld samt Finale an der Startlinie spiegeln. Aus dem
+     Anstieg wird ein Abstieg, aus der Gipfelrampe der Weg in den Graben, und
+     der tiefste Punkt liegt genau dort, wo sonst der Gipfel lag. */
+  if (istMeer()) {
+    for (let i = 0; i < TFIELD.length; i++) TFIELD[i] = -TFIELD[i];
+    if (FINALE) { FINALE.bahn = -FINALE.bahn; FINALE.gespiegelt = true; }
+  }
   bauHelis();
 
   // Deck einmessen: Höhe dort ablesen, wo es aufliegt (außerhalb der
@@ -1400,8 +1441,9 @@ function step(h) {
   const air = !rear.grounded && !front.grounded;
   GRAVK = gravFactor() * (air ? CFG.AIR_GRAV : 1);
   // Ab der Gipfelhöhe ist Schluss mit Schwerkraft – wer dort abspringt, fliegt
-  // geradeaus weiter ins Weltall.
-  if ((rear.y + front.y) / 2 >= CFG.GIPFEL) GRAVK = 0;
+  // geradeaus weiter ins Weltall. Im Meer gibt es das nicht: dort ist unten
+  // der Grund und kein Vakuum.
+  if (!istMeer() && (rear.y + front.y) / 2 >= CFG.GIPFEL) GRAVK = 0;
 
   if (rear.grounded) {
     const grip = gripAt(rear.x, rear.y);
@@ -1526,8 +1568,10 @@ function weatherReset() {
 }
 
 function pickWeather() {
-  // Im leichten Grad nur die harmlosen Lagen: kein Gewitter, kein Tornado
+  // Im leichten Grad nur die harmlosen Lagen: kein Gewitter, kein Tornado.
+  // Leere Liste heißt gar kein Wetter – unter Wasser regnet es nicht.
   const keys = G_REGEL.wetter || Object.keys(WKIND);
+  if (!keys.length) return null;
   let sum = 0;
   for (const k of keys) sum += WKIND[k].gewicht;
   let r = Math.random() * sum;
@@ -1728,7 +1772,10 @@ function updateWeather(dt) {
   if (WEA.kind === "klar") {
     if (!DBG.hold) {
       WEA.next -= dt;
-      if (WEA.next <= 0) startWeather(pickWeather());
+      if (WEA.next <= 0) {
+        const k = pickWeather();
+        if (k) startWeather(k); else WEA.next = 999;
+      }
     }
   } else {
     WEA.left -= dt;
@@ -1923,8 +1970,9 @@ function heliFlug(dt) {
   rear.grounded = front.grounded = false;
   rear.sag = front.sag = rear.sagV = front.sagV = 0;
   G.lastAng = Math.atan2(front.y - rear.y, front.x - rear.x);
-  if (by > G.maxY) {                        // Höhe zählt schon während des Flugs
-    G.score += (by - G.maxY) / CFG.PPM * (1 + G.maxY / (CFG.PPM * 100)) * MOD.score;
+  if (fortschritt(by) > fortschritt(G.maxY)) {   // zählt schon während des Flugs
+    G.score += (fortschritt(by) - fortschritt(G.maxY)) / CFG.PPM
+             * (1 + fortschritt(G.maxY) / (CFG.PPM * 100)) * MOD.score;
     G.maxY = by;
   }
   const k = Math.min(1, dt * 4.5);          // Kamera wie sonst hinterher
@@ -1972,15 +2020,16 @@ function update(dt) {
   const b = bodyDir();
 
   // Höhe & Punkte: höhere Meter sind mehr wert
-  if (my > G.maxY) {
-    const dm = (my - G.maxY) / CFG.PPM;
-    G.score += dm * (1 + G.maxY / (CFG.PPM * 100)) * MOD.score;
+  if (fortschritt(my) > fortschritt(G.maxY)) {
+    const dm = (fortschritt(my) - fortschritt(G.maxY)) / CFG.PPM;
+    G.score += dm * (1 + fortschritt(G.maxY) / (CFG.PPM * 100)) * MOD.score;
     G.maxY = my;
-    // Gebietswechsel melden. Es zählt der höchste erreichte Übergang, damit
+    // Gebietswechsel melden. Es zählt der weiteste erreichte Übergang, damit
     // beim Auf und Ab an einer Grenze nicht dauernd dieselbe Meldung kommt.
-    while (G.zone < ZONES.length && my > ZONES[G.zone].y) {
+    while (G.zone < ZONES.length && fortschritt(my) > fortschritt(ZONES[G.zone].y)) {
       const z = ZONES[G.zone++];
-      toast(z.icon + " " + z.name + " · " + Math.round(z.y / CFG.PPM) + " m");
+      toast(z.icon + " " + z.name + " · " +
+            Math.round(fortschritt(z.y) / CFG.PPM) + " m");
     }
   }
 
@@ -2047,20 +2096,23 @@ function update(dt) {
     G.abspann += dt;
     if (G.abspann >= CFG.ABSPANN_ZEIT) {
       G.geschafft = true;
-      gameOver("✨ Ein neues Sternbild!");
+      gameOver(istMeer() ? "🕳 Auf dem Grund!" : "✨ Ein neues Sternbild!");
     }
     return;
   }
   if (G.weltall !== null) {
     G.weltall += dt;
-    if (G.weltall >= CFG.WELTALL_ZEIT) {
+    if (G.weltall >= (istMeer() ? CFG.WELTALL_ZEIT * 0.6 : CFG.WELTALL_ZEIT)) {
       G.abspann = 0;
       el("hud").classList.add("weg");            // Anzeigen aus dem Bild nehmen
       el("pads").classList.add("hidden");
       boostBox.classList.add("hidden");
       return;
     }
-  } else if (my >= CFG.GIPFEL) {
+  /* Am Berg springt man über die Gipfelhöhe hinaus, im Meer steht man auf dem
+     Grund und kommt nie darunter – dort zählt daher schon das Aufsetzen, mit
+     der Radhöhe als Spielraum. */
+  } else if (fortschritt(my) >= CFG.GIPFEL - (istMeer() ? CFG.WHEEL_R * 3 : 0)) {
     G.weltall = 0;
   }
 
@@ -2381,8 +2433,36 @@ function heightGrad(stops) {
 let RAMP_BODY = [], RAMP_EDGE = [], RAMP_DECK = [];
 
 function bauRampen() {
-  const SL = CFG.SNOWLINE, IL = CFG.ICELINE, VL = CFG.LAVALINE, WL = CFG.SPACELINE;
   const s = v => v * gradSkala();
+  if (G_REGEL.meer) {
+    /* Der Meeresgrund läuft nach unten, die Stufen also von 0 nach -GIPFEL.
+       heightGrad braucht sie aufsteigend, darum die tiefste zuerst. */
+    const T = d => -CFG.GIPFEL * d;
+    RAMP_BODY = [
+      [T(1.02), "#0d1526"],      // Grabensohle
+      [T(0.75), "#17233a"],      // Tiefsee
+      [T(0.45), "#2c3f52"],      // Dämmerzone
+      [T(0.22), "#4a6b6b"],      // Riffgestein
+      [T(0.06), "#8f9a6e"],      // bewachsener Sand
+      [T(-0.02), "#d8cf9a"],     // heller Ufersand
+    ];
+    RAMP_EDGE = [
+      [T(1.02), "#22304a"],
+      [T(0.75), "#2e4668"],
+      [T(0.45), "#4c7f86"],
+      [T(0.22), "#63b39a"],      // Korallensaum
+      [T(0.06), "#c3d089"],      // Seegras
+      [T(-0.02), "#f2ecc0"],
+    ];
+    RAMP_DECK = [
+      [T(1.02), "rgba(10,16,30,.5)"],
+      [T(0.45), "rgba(30,52,74,.35)"],
+      [T(0.06), "rgba(120,140,110,.3)"],
+      [T(-0.02), "rgba(200,190,140,.45)"],
+    ];
+    return;
+  }
+  const SL = CFG.SNOWLINE, IL = CFG.ICELINE, VL = CFG.LAVALINE, WL = CFG.SPACELINE;
   RAMP_BODY = [
     [SL - CFG.SNOW_FADE, "#5d4a3a"],       // Fels
     [SL - s(120),        "#a9b3c2"],       // Übergang
@@ -2914,8 +2994,11 @@ let PROFIL = null;
 function bauProfil() {
   const n = 300, xe = FINALE ? FINALE.xGipfel : TEND;
   PROFIL = { xe, n, y: new Float32Array(n + 1), max: 0 };
+  // im Fortschrittsmaß ablegen: im Meer wächst das Profil nach unten, die
+  // Schlussgrafik soll aber in beiden Modi als Berg von links nach rechts
+  // aufgebaut werden
   for (let i = 0; i <= n; i++) {
-    const y = terrainY(xe * i / n);
+    const y = fortschritt(terrainY(xe * i / n));
     PROFIL.y[i] = y;
     if (y > PROFIL.max) PROFIL.max = y;
   }
@@ -2931,7 +3014,13 @@ const AB_STERNE = Array.from({ length: 120 }, (_, i) => ({
    liegt. Wird jetzt beim Gradwechsel mitgezogen. */
 let AB_ZONEN = [];
 function bauAbZonen() {
-  AB_ZONEN = [
+  // in Fortschrittsmaß wie PROFIL: positiv, auch wenn es im Meer nach unten geht
+  AB_ZONEN = G_REGEL.meer ? [
+    { y: CFG.SNOWLINE,  name: "Sandbank",   farbe: [226, 220, 170] },
+    { y: CFG.ICELINE,   name: "Riff",       farbe: [130, 214, 186] },
+    { y: CFG.LAVALINE,  name: "Dämmerzone", farbe: [128, 172, 208] },
+    { y: CFG.SPACELINE, name: "Tiefsee",    farbe: [116, 138, 190] },
+  ] : [
     { y: CFG.SNOWLINE,  name: "Schnee", farbe: [214, 228, 244] },
     { y: CFG.ICELINE,   name: "Eis",    farbe: [168, 214, 240] },
     { y: CFG.LAVALINE,  name: "Vulkan", farbe: [236, 152, 110] },
@@ -3008,6 +3097,41 @@ function zeichneKarte(ctx) {
   const M = abspannMasse();
   const { lx, rx, gx, oben, unten, py, pxAuf, pxAb, bei } = M;
 
+  /* Im Meer wird dieselbe Grafik zur Wassersäule: die Achse zeigt weiter nach
+     oben, dort ist aber nicht der Himmel, sondern der Graben. Statt Sternen und
+     Galaxien gibt es Wasser, das nach oben hin dunkel wird, und Lichtstrahlen
+     unten an der Oberfläche. */
+  if (G_REGEL.meer) {
+    const w = ctx.createLinearGradient(0, unten, 0, oben - H * 0.24);
+    w.addColorStop(0, "#7fc4de");                    // Oberfläche
+    w.addColorStop(bei(CFG.SNOWLINE), "#4e9fc0");
+    w.addColorStop(bei(CFG.ICELINE), "#2f6f96");
+    w.addColorStop(bei(CFG.LAVALINE), "#1a3f63");
+    w.addColorStop(bei(CFG.SPACELINE), "#0d2138");
+    w.addColorStop(1, "#050c18");                    // Grabensohle
+    ctx.fillStyle = w;
+    ctx.fillRect(lx - W, oben - H * 0.24, W * 3, unten - oben + H * 0.24);
+    // Lichtstrahlen unten, wo die Oberfläche liegt
+    for (let i = 0; i < 9; i++) {
+      const px2 = lx + (rx - lx) * (i + 0.5) / 9 + (hash(i * 2.7) - 0.5) * 60;
+      const lang = (0.1 + hash(i * 4.3) * 0.16) * (unten - oben);
+      const br = 12 + hash(i * 6.1) * 22;
+      const gl = ctx.createLinearGradient(0, unten, 0, unten - lang);
+      gl.addColorStop(0, "rgba(200,240,255,.22)");
+      gl.addColorStop(1, "rgba(190,235,255,0)");
+      ctx.fillStyle = gl;
+      ctx.beginPath();
+      ctx.moveTo(px2 - br * 0.4, unten); ctx.lineTo(px2 + br * 0.4, unten);
+      ctx.lineTo(px2 + br * 1.6, unten - lang); ctx.lineTo(px2 - br * 1.6, unten - lang);
+      ctx.closePath(); ctx.fill();
+    }
+    // ein paar Schwebeteilchen statt Sternen
+    ctx.fillStyle = "rgba(206,232,255,.28)";
+    for (const s2 of AB_STERNE) {
+      const Y = oben - H * 0.2 + (unten - oben) * s2.y;
+      ctx.beginPath(); ctx.arc(lx + s2.x * (rx - lx), Y, s2.s * 0.8, 0, 7); ctx.fill();
+    }
+  } else {
   /* --- Hintergrund je Schicht ------------------------------------------
      Von unten nach oben: Taghimmel über dem Tal, Dämmerung über Schnee und
      Eis, Glut über dem Vulkan, Weltall darüber. */
@@ -3093,6 +3217,7 @@ function zeichneKarte(ctx) {
   ctx.arc(mx2 - 4, my2 - 3, 3, 0, 7);
   ctx.moveTo(mx2 + 7, my2 + 2); ctx.arc(mx2 + 4, my2 + 2, 2.2, 0, 7);
   ctx.fill();
+  }
 
   /* --- Nebengipfel: geben dem Hauptberg Tiefe ---------------------------- */
   const hMax = unten - oben;
@@ -3129,12 +3254,21 @@ function zeichneKarte(ctx) {
   berg.closePath();
 
   const farbverlauf = ctx.createLinearGradient(0, unten, 0, oben);
-  farbverlauf.addColorStop(0, "#2f4a35");
-  farbverlauf.addColorStop(bei(CFG.SNOWLINE), "#4d6a52");
-  farbverlauf.addColorStop(bei(CFG.ICELINE), "#cfd9e4");
-  farbverlauf.addColorStop(bei(CFG.LAVALINE), "#8fb4d6");
-  farbverlauf.addColorStop(bei(CFG.SPACELINE), "#7a4038");
-  farbverlauf.addColorStop(1, "#2a2340");
+  if (G_REGEL.meer) {
+    farbverlauf.addColorStop(0, "#d8cf9a");                    // Ufersand
+    farbverlauf.addColorStop(bei(CFG.SNOWLINE), "#8f9a6e");    // Seegras
+    farbverlauf.addColorStop(bei(CFG.ICELINE), "#4a6b6b");     // Riff
+    farbverlauf.addColorStop(bei(CFG.LAVALINE), "#2c3f52");
+    farbverlauf.addColorStop(bei(CFG.SPACELINE), "#17233a");
+    farbverlauf.addColorStop(1, "#0d1526");                    // Grabensohle
+  } else {
+    farbverlauf.addColorStop(0, "#2f4a35");
+    farbverlauf.addColorStop(bei(CFG.SNOWLINE), "#4d6a52");
+    farbverlauf.addColorStop(bei(CFG.ICELINE), "#cfd9e4");
+    farbverlauf.addColorStop(bei(CFG.LAVALINE), "#8fb4d6");
+    farbverlauf.addColorStop(bei(CFG.SPACELINE), "#7a4038");
+    farbverlauf.addColorStop(1, "#2a2340");
+  }
   ctx.fillStyle = farbverlauf;
   ctx.fill(berg);
 
@@ -3177,8 +3311,8 @@ function zeichneKarte(ctx) {
   }
 
   // Schneegrenze: nur eine schmale, wellige Kante. Eine flächige Lasur darüber
-  // hat die Gebietsfarben komplett ausgewaschen.
-  const ys = py(CFG.SNOWLINE);
+  // hat die Gebietsfarben komplett ausgewaschen. Unter Wasser gibt es keine.
+  const ys = py(G_REGEL.meer ? -1e9 : CFG.SNOWLINE);
   ctx.strokeStyle = "rgba(240,247,255,.34)";
   ctx.lineWidth = 2.4;
   ctx.beginPath();
@@ -3318,6 +3452,23 @@ function zeichneAnimiertes(u, M, ein) {
   const sp = smooth((u - 5.2) / 1.6);
   if (sp > 0.004) {
     const t = performance.now() / 1000;
+    if (istMeer()) {
+      /* Im Meer steht am Ende kein Sternbild am Himmel, sondern ein Schwarm
+         Leuchtwesen über der Grabensohle. */
+      for (let i = 0; i < 22; i++) {
+        const w = i * 1.7 + t * 0.25;
+        const r = (18 + (i % 5) * 13) * (0.8 + 0.2 * Math.sin(t + i));
+        const X = gx + Math.cos(w) * r * 1.5, Y = gy - 46 + Math.sin(w) * r * 0.7;
+        const a = sp * (0.45 + 0.55 * Math.abs(Math.sin(t * 1.6 + i * 0.9)));
+        const g = ctx.createRadialGradient(X, Y, 0, X, Y, 11);
+        g.addColorStop(0, rgba([210, 255, 240], a));
+        g.addColorStop(0.35, rgba([110, 230, 220], 0.5 * a));
+        g.addColorStop(1, rgba([60, 180, 210], 0));
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(X, Y, 11, 0, 7); ctx.fill();
+      }
+      return;
+    }
     ctx.save();
     ctx.translate(gx, gy - 74);
     const zs = 0.62 + sp * 0.18;
@@ -3356,8 +3507,10 @@ function beschriftung(u, M) {
   // beide auf dieselbe Grundlinie unter die Karte: über dem Gipfel steht das
   // Sternbild, dort wäre die Zahl im Weg
   const zeile = Math.min(H - 8, M.py(PROFIL.y[0]) + 26);
-  ctx.fillText("Dorf", M.lx + W * 0.045, zeile);
-  ctx.fillText("Gipfel · 1000 m", M.gx, zeile);
+  const tief = istMeer();
+  ctx.fillText(tief ? "Küste" : "Dorf", M.lx + W * 0.045, zeile);
+  ctx.fillText((tief ? "Grund · " : "Gipfel · ") +
+               Math.round(CFG.GIPFEL / CFG.PPM) + " m", M.gx, zeile);
   ctx.textAlign = "left";
 }
 
@@ -4211,6 +4364,14 @@ function bewuchs(schattenLauf) {
     if (r0 > 0.85) continue;
     const wx = (k + hash(k * 4.3) * 0.8) * BST;
     const wy = terrainY(wx) - jumpRise(wx, true);
+
+    /* Unter Wasser sind alle Gebietsanteile null, der Bewuchs bliebe also bis
+       auf den Grund grünes Gras. Er dünnt hier stattdessen mit der Tiefe aus:
+       Seegras im Flachen, ab der Dämmerzone blanker Fels. */
+    if (istMeer()) {
+      const dicht = 1 - smooth((-wy - CFG.ICELINE) / (CFG.SPACELINE - CFG.ICELINE));
+      if (r0 > 0.85 * dicht) continue;
+    }
 
     // Gewichte der Stufen an dieser Stelle
     const eis = iceAt(wy), lava = lavaAt(wy), raum = spaceAt(wy);
@@ -5172,7 +5333,127 @@ function drawWeather() {
   ctx.restore();
 }
 
+/* ---- Meer-Modus -----------------------------------------------------------
+   Eigener Bildaufbau: statt Himmel, Wolken und Bergketten gibt es Wasser, das
+   mit der Tiefe dunkler wird, Lichtstrahlen unter der Oberfläche, aufsteigende
+   Blasen und Fischschwärme. Das Gelände selbst zeichnet dieselbe Funktion wie
+   sonst – es ist nur gespiegelt und anders eingefärbt. */
+const BLASEN = Array.from({ length: 90 }, (_, i) => ({
+  x: hash(i * 1.7 + 2), y: hash(i * 5.3 + 6), r: 1 + hash(i * 3.1) * 3.4,
+  v: 0.05 + hash(i * 7.9) * 0.1, w: hash(i * 2.3) * 6.28,
+}));
+const FISCHE = Array.from({ length: 16 }, (_, i) => ({
+  x: hash(i * 4.1 + 3) * 4200, y: hash(i * 6.7 + 1) * 3000 - 1500,
+  s: 0.5 + hash(i * 2.9) * 0.9, v: (18 + hash(i * 8.3) * 26) * (hash(i * 5.1) > 0.5 ? 1 : -1),
+  n: 3 + Math.floor(hash(i * 9.7) * 5), ph: hash(i * 3.7) * 6.28,
+}));
+
+// 0 an der Oberfläche, 1 am Grund
+function meerTiefe(y) { return Math.max(0, Math.min(1, -y / CFG.GIPFEL)); }
+
+function drawWasser() {
+  const t = performance.now() / 1000;
+  const oben = meerTiefe(cam.y - H * CAMY / SCALE);          // oberer Bildrand
+  const unten = meerTiefe(cam.y + (H - H * CAMY) / SCALE);   // unterer Bildrand
+  const farbe = d => lerp3(lerp3([86, 170, 208], [16, 62, 104], Math.min(1, d * 2)),
+                           [4, 10, 26], Math.max(0, d - 0.5) * 2);
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, rgba(farbe(oben), 1));
+  g.addColorStop(1, rgba(farbe(unten), 1));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  // Wasseroberfläche mit Lichtstrahlen – nur zu sehen, solange sie im Bild ist
+  const yO = sy(0);
+  if (yO > -300) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, -200, W, Math.min(H + 200, yO + 200)); ctx.clip();
+    const hell = ctx.createLinearGradient(0, yO - 40, 0, yO + 420 * SCALE);
+    hell.addColorStop(0, "rgba(190,238,255,.75)");
+    hell.addColorStop(1, "rgba(150,220,255,0)");
+    ctx.fillStyle = hell;
+    ctx.fillRect(0, yO - 40, W, 460 * SCALE);
+    // Strahlen: schmale helle Keile, die langsam wandern
+    for (let i = 0; i < 7; i++) {
+      const px = ((i * 0.17 + t * 0.012) % 1) * (W + 300) - 150;
+      const br = (26 + hash(i * 3.3) * 34) * SCALE;
+      const lang = (420 + hash(i * 5.7) * 380) * SCALE;
+      const neig = (hash(i * 7.1) - 0.5) * 90 * SCALE;
+      const gl = ctx.createLinearGradient(px, yO, px + neig, yO + lang);
+      gl.addColorStop(0, "rgba(210,245,255,.24)");
+      gl.addColorStop(1, "rgba(190,235,255,0)");
+      ctx.fillStyle = gl;
+      ctx.beginPath();
+      ctx.moveTo(px - br * 0.35, yO); ctx.lineTo(px + br * 0.35, yO);
+      ctx.lineTo(px + neig + br, yO + lang); ctx.lineTo(px + neig - br, yO + lang);
+      ctx.closePath(); ctx.fill();
+    }
+    // die Oberfläche selbst als welliges Band
+    ctx.strokeStyle = "rgba(224,248,255,.6)";
+    ctx.lineWidth = 2.4 * SCALE;
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += 12)
+      ctx.lineTo(x, yO + Math.sin(x * 0.02 + t * 1.6) * 4 * SCALE
+                      + Math.sin(x * 0.007 - t * 0.9) * 6 * SCALE);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawBlasen() {
+  const t = performance.now() / 1000;
+  ctx.fillStyle = "rgba(214,240,255,.34)";
+  for (const b of BLASEN) {
+    const y = ((b.y - t * b.v) % 1 + 1) % 1;
+    const px = (b.x * W + Math.sin(t * 0.8 + b.w) * 14 * SCALE) % W;
+    ctx.beginPath();
+    ctx.arc(px, y * H, b.r * SCALE, 0, 7);
+    ctx.fill();
+  }
+}
+
+function drawFische() {
+  const t = performance.now() / 1000;
+  const par = 0.55;
+  for (const f of FISCHE) {
+    const wx = f.x + t * f.v;
+    const px = W * CAMX + (((wx - cam.x * par) % 4200 + 4200) % 4200 - 2100) * SCALE;
+    const py = H * CAMY - (f.y - cam.y * par) * SCALE;
+    if (px < -160 || px > W + 160 || py < -80 || py > H + 80) continue;
+    const s = f.s * Math.max(0.6, SCALE);
+    const hin = f.v > 0 ? 1 : -1;
+    const tief = meerTiefe(f.y);
+    ctx.fillStyle = rgba(lerp3([120, 190, 210], [40, 80, 120], tief), 0.75);
+    for (let k = 0; k < f.n; k++) {
+      const ox = (k - f.n / 2) * 17 * s * hin;
+      const oy = Math.sin(k * 1.9 + t * 2 + f.ph) * 9 * s;
+      const wed = Math.sin(t * 7 + k * 1.3) * 3 * s;
+      ctx.beginPath();
+      ctx.ellipse(px + ox, py + oy, 7 * s, 3.4 * s, 0, 0, 7);
+      ctx.fill();
+      ctx.beginPath();                                   // Schwanzflosse
+      ctx.moveTo(px + ox - 6 * s * hin, py + oy);
+      ctx.lineTo(px + ox - 11 * s * hin, py + oy - 3.4 * s + wed);
+      ctx.lineTo(px + ox - 11 * s * hin, py + oy + 3.4 * s + wed);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+}
+
+function drawMeer() {
+  drawWasser();
+  drawFische();
+  drawTerrain();          // Bewuchs wird hier von selbst zu Seegras: die
+                          // Gebietsanteile sind unter Wasser alle null
+  drawCans();
+  drawBike();
+  drawBlasen();           // vor allem, damit sie wie nah an der Kamera wirken
+  drawSternbild();
+  drawAbspann();
+}
+
 function draw() {
+  if (istMeer()) { drawMeer(); return; }
   const alt = Math.min(1, Math.max(0, cam.y) / 9000);
   drawSky(alt);
   drawDeepSky();           // Galaxien und Schwarze Löcher, ganz hinten
@@ -5233,9 +5514,10 @@ function toast(msg) {
 
 function updateHUD() {
   const mx = (rear.x + front.x) / 2;
-  const h = Math.max(0, G.maxY / CFG.PPM);
+  const h = Math.max(0, fortschritt(G.maxY) / CFG.PPM);
   const spd = Math.abs((rear.x - rear.px) * 120) / CFG.PPM * 3.6;
   el("hHeight").innerHTML = Math.floor(h) + '<small> m</small>';
+  el("hHeightLbl").textContent = istMeer() ? "Tiefe" : "Höhe";
   el("hScore").textContent = Math.floor(G.score);
   el("hBest").textContent = G.best;
   el("hSpeed").textContent = Math.round(spd);
@@ -5262,12 +5544,17 @@ function showOverlay(isOver) {
   if (isOver) {
     el("title").innerHTML = G.reason;
     el("sub").textContent = G.geschafft
-      ? CHARS[charIdx].name + " hat den Gipfel auf 1000 m genommen, ist ins All "
-        + "abgesprungen und steht jetzt als Sternbild am Himmel. Höher geht es nicht."
+      ? (istMeer()
+          ? CHARS[charIdx].name + " ist " + Math.round(CFG.GIPFEL / CFG.PPM)
+            + " m tief bis auf die Grabensohle getaucht. Tiefer geht es nicht."
+          : CHARS[charIdx].name + " hat den Gipfel auf " + Math.round(CFG.GIPFEL / CFG.PPM)
+            + " m genommen, ist ins All abgesprungen und steht jetzt als Sternbild "
+            + "am Himmel. Höher geht es nicht.")
       : CHARS[charIdx].name +
         " braucht mehr Anlauf aus dem Tal – und in der Luft die Nase flach halten.";
     el("panel").classList.toggle("geschafft", !!G.geschafft);
-    el("sHeight").innerHTML = Math.floor(G.maxY / CFG.PPM) + '<small> m</small>';
+    el("sHeight").innerHTML = Math.floor(fortschritt(G.maxY) / CFG.PPM) + '<small> m</small>';
+    el("sHeightLbl").textContent = istMeer() ? "Tiefe" : "Höhe";
     el("sScore").textContent = Math.floor(G.score);
     el("sCoins").textContent = "+" + (G.earned || 0);
     el("sBest").textContent = G.best;
@@ -5449,7 +5736,8 @@ function tpTo(x) {
   rear.grounded = front.grounded = false;
   G.airTime = 0; G.spinAcc = 0; G.touch = 0;
   G.lastAng = Math.atan2(front.y - rear.y, front.x - rear.x);
-  G.maxY = Math.max(G.maxY, y);      // kein geschenkter Punkteschub durch den Sprung
+  // kein geschenkter Punkteschub durch den Sprung
+  if (fortschritt(y) > fortschritt(G.maxY)) G.maxY = y;
   federReset();
   cam.x = x; cam.y = y;
 }

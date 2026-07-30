@@ -511,8 +511,10 @@ const CFG = {
      dann der Treffer. Ohne Vorwarnung wäre keine davon fair. */
   ADLER_VON: 1500,           // Welt-y, ab der Adler jagen (~58 m)
   ADLER_EVERY: [10, 17],     // s zwischen zwei Angriffen
-  ADLER_WARN: 1.15,          // s Kreisen über dem Fahrer, bevor er stößt
-  ADLER_SPEED: 1150,         // px/s im Sturzflug
+  // Kreisen und Sturz zusammen sind die Zeit zum Ausweichen. 1,15 s Kreisen
+  // plus 1150 px/s Sturz waren zu knapp – jetzt bleibt gut die doppelte Zeit.
+  ADLER_WARN: 2.1,           // s Kreisen über dem Fahrer, bevor er stößt
+  ADLER_SPEED: 780,          // px/s im Sturzflug
   ADLER_HIT: 44,             // px Trefferradius
   ADLER_LEAD: 0.55,          // wie weit er vorhält
 

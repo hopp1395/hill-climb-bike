@@ -34,6 +34,11 @@ entscheidet über Landung oder Sturz.
 Feld aufs andere wandern. Der Knopf ⛶ oben schaltet ins Vollbild (und versucht dabei, aufs
 Querformat zu drehen); im Hochformat weist ein Hinweis aufs Drehen hin, lässt sich aber wegtippen.
 
+Die Spielfläche richtet sich nach `visualViewport`, nicht nach `innerHeight` — sie endet also
+genau über der Browserleiste statt dahinter, und die Knöpfe wandern mit, wenn die Leiste ein-
+oder ausfährt. Gescrollt wird nichts: `body` steht auf `position:fixed`, und im Querformat legt
+sich das Startmenü zweispaltig, damit es ohne Scrollen auf einen flachen Bildschirm passt.
+
 ## Was drin ist
 
 - **Fünf Höhenzonen** mit eigenem Terrain, Wetter und Deko: Fels → Schnee (100 m) → Eis (250 m) →

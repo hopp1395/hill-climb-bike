@@ -6,10 +6,15 @@
 <title>Hill Climb Bike – wie hoch schaffst du es?</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{width:100%;height:100%;overflow:hidden;background:#0b1020;
+  /* --vh ist die WIRKLICH sichtbare Höhe. Am Handy ist die Layout-Höhe größer,
+     solange die Browserleiste eingeblendet ist – ohne das läge der untere Rand
+     der Spielfläche samt Knöpfen hinter der Leiste. JS pflegt den Wert. */
+  :root{--vh:100vh; --versteckt:0px}
+  /* position:fixed am body unterbindet das Gummiband-Scrollen unter iOS */
+  html,body{position:fixed;inset:0;width:100%;height:100%;overflow:hidden;background:#0b1020;
     font-family:system-ui,"Segoe UI",Roboto,sans-serif;color:#fff;
     -webkit-user-select:none;user-select:none;touch-action:none;overscroll-behavior:none}
-  #c{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #c{position:fixed;top:0;left:0;width:100%;height:var(--vh);display:block}
 
   /* ---------- HUD ---------- */
   #hud{position:fixed;top:0;left:0;right:0;padding:10px 12px;pointer-events:none;
@@ -30,7 +35,7 @@
   @keyframes pulse{50%{opacity:.45}}
   /* ---------- Boost ---------- */
   #boostBox{position:fixed;left:50%;transform:translateX(-50%);
-    bottom:calc(14px + env(safe-area-inset-bottom));z-index:3;
+    bottom:calc(14px + env(safe-area-inset-bottom) + var(--versteckt));z-index:3;
     /* füllt die Lücke zwischen den Knöpfen: Bremse endet bei 0.25W+48,
        Gas beginnt bei 0.75W-48 -> 50vw-96 Lücke, minus 20 px Luft pro Seite */
     width:clamp(160px, calc(50vw - 136px), 640px);
@@ -53,7 +58,7 @@
   #toast.show{opacity:1;transform:translate(-50%,0)}
 
   /* ---------- Steuerung ---------- */
-  #pads{position:fixed;left:0;right:0;bottom:0;height:58%;display:flex}
+  #pads{position:fixed;left:0;right:0;bottom:var(--versteckt);height:58%;display:flex}
   #pads.hidden{pointer-events:none;opacity:0}
   .pad{flex:1;display:flex;align-items:flex-end;justify-content:center;padding-bottom:calc(18px + env(safe-area-inset-bottom))}
   /* Der Bremsknopf sitzt bei 25 % der Breite (rechter Rand 0.25*W + 48), die
@@ -72,6 +77,23 @@
   #padL .knob{border-color:rgba(255,160,160,.6)}
   .knob span{display:block;font-size:22px;line-height:1}
 
+  /* Auf einem flachen Handybild fressen HUD und Knöpfe zu viel Strecke weg. */
+  @media (max-height:520px){
+    #hud{padding:7px 9px}
+    .card{padding:6px 9px;border-radius:10px}
+    .val{font-size:17px}
+    #fuelWrap{width:104px}
+    .knob{width:74px;height:74px;font-size:9.5px}
+    .knob span{font-size:18px}
+    #boostBox{padding:6px 12px 8px}
+    #boostBar{height:12px;margin-top:5px}
+  }
+  /* Nur wenn die Breite reicht, dürfen die Knöpfe wieder ganz nach unten neben
+     die Boost-Leiste – unter 600 px liegt sie über die volle Breite im Weg. */
+  @media (max-height:520px) and (min-width:601px){
+    .pad{padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+  }
+
   /* ---------- Handy: Vollbild + Querformat ---------- */
   /* Am Handy frisst die Browserleiste ein Fünftel der Höhe. Der Knopf sitzt
      oben mittig zwischen den beiden HUD-Karten und nur dort, wo wirklich mit
@@ -83,7 +105,8 @@
   #vollbild:active{transform:translateX(-50%) scale(.93)}
   @media (pointer:coarse){ #vollbild{display:block} }
 
-  #quer{position:fixed;inset:0;z-index:20;display:none;place-items:center;text-align:center;
+  #quer{position:fixed;top:0;left:0;right:0;height:var(--vh);z-index:20;
+    display:none;place-items:center;text-align:center;
     padding:26px;background:rgba(6,10,22,.95);backdrop-filter:blur(5px)}
   @media (pointer:coarse) and (orientation:portrait){ body:not(.querOk) #quer{display:grid} }
   #quer .dreh{display:block;font-size:56px;margin-bottom:16px;
@@ -94,7 +117,12 @@
     background:rgba(255,255,255,.08);color:#fff;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
 
   /* ---------- Overlay ---------- */
-  #overlay{position:fixed;inset:0;display:grid;place-items:center;padding:20px;overflow-y:auto;
+  /* touch-action muss hier ausdrücklich stehen: der Browser verrechnet den Wert
+     mit dem der Vorfahren, und am body steht "none" – ohne das ließe sich das
+     Menü mit dem Finger nicht bewegen, falls es doch einmal überläuft. */
+  #overlay{position:fixed;top:0;left:0;right:0;height:var(--vh);
+    display:grid;place-items:center;padding:20px;overflow-y:auto;
+    touch-action:pan-y;-webkit-overflow-scrolling:touch;
     background:radial-gradient(120% 90% at 50% 30%,rgba(10,16,34,.55),rgba(6,10,22,.92))}
   #overlay.hidden{display:none}
   #panel{max-width:460px;width:100%;text-align:center;background:rgba(12,20,40,.72);
@@ -135,6 +163,37 @@
     .tips{font-size:11.5px;line-height:1.55;padding:9px 11px}
     #btn{padding:12px;font-size:15px}
     #stats .val{font-size:18px}
+  }
+
+  /* Handy im Querformat: rund 390 px hoch, aber breit. Einspaltig braucht das
+     Menü über 500 px und müsste gescrollt werden – also nebeneinander legen.
+     Links Fahrer und Fähigkeit, rechts Erklärung und Startknopf. */
+  @media (max-height:520px) and (min-width:640px){
+    #overlay{padding:8px}
+    #panel{max-width:min(780px,96vw);display:grid;column-gap:18px;
+      grid-template-columns:1.06fr .94fr;padding:11px 15px 13px}
+    #panel h1{grid-area:1/1/2/3;font-size:20px;margin-bottom:1px}
+    #sub{grid-area:2/1/3/3;font-size:11.5px;line-height:1.4;margin-bottom:7px}
+    #charLbl{grid-area:3/1/4/2;margin-bottom:6px}
+    #chars{grid-area:4/1/5/2}
+    #buff{grid-area:5/1/6/2;margin-bottom:0}
+    /* Tipps (im Menü) und Statistik (nach dem Lauf) teilen sich dieselbe Zelle –
+       es ist ohnehin immer nur eins von beidem sichtbar. */
+    .tips{grid-area:3/2/5/3;margin:0;align-self:start}
+    #stats{grid-area:3/2/5/3;flex-wrap:wrap;margin:0;align-self:start}
+    #stats .card{flex:1 1 44%}
+    #btn{grid-area:5/2/6/3;align-self:end;margin-top:0}
+    .char{width:46px}
+    .char .pic{width:40px;height:40px}
+  }
+  /* Noch flacher (Querformat mit eingeblendeter Browserleiste): der Werbesatz
+     unter dem Titel fliegt raus. Nach dem Lauf bleibt er stehen, dort steht
+     dort nämlich, woran man gescheitert ist. */
+  @media (max-height:420px) and (min-width:640px){
+    #panel:not(.ende) #sub{display:none}
+    #panel h1{font-size:18px}
+    #buff{padding:7px 10px 8px}
+    .tips{font-size:11px;line-height:1.5;padding:8px 10px}
   }
 
   /* ---------- Fahrerauswahl ---------- */
@@ -440,14 +499,30 @@ let W = 0, H = 0, DPR = 1, SCALE = 1;
 const CAMX = 0.36, CAMY = 0.64;      // Bildschirmposition des Bikes
 const cam = { x: 0, y: 0 };
 
+/* Am Handy ist window.innerHeight die LAYOUT-Höhe: sie schließt den Streifen
+   ein, den die Browserleiste verdeckt, und ändert sich beim Ein- und Ausfahren
+   der Leiste nicht. visualViewport meldet dagegen, was gerade wirklich zu sehen
+   ist – danach richten sich Canvas und die unteren Knöpfe. */
 function resize() {
+  const vv = window.visualViewport;
   DPR = Math.min(2, window.devicePixelRatio || 1);
-  W = window.innerWidth; H = window.innerHeight;
+  W = Math.round(vv ? vv.width : window.innerWidth);
+  H = Math.round(vv ? vv.height : window.innerHeight);
+  const versteckt = Math.max(0, window.innerHeight - H);
+  const st = document.documentElement.style;
+  st.setProperty("--vh", H + "px");
+  st.setProperty("--versteckt", versteckt + "px");
   cvs.width = Math.round(W * DPR); cvs.height = Math.round(H * DPR);
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   SCALE = Math.max(0.5, Math.min(1.15, H / 780));
 }
 addEventListener("resize", resize);
+addEventListener("orientationchange", resize);
+if (window.visualViewport) {
+  // Leiste fährt ein/aus, Tastatur klappt auf, Nutzer zoomt: alles landet hier
+  visualViewport.addEventListener("resize", resize);
+  visualViewport.addEventListener("scroll", resize);
+}
 resize();
 
 const sx = wx => W * CAMX + (wx - cam.x) * SCALE;
@@ -3914,6 +3989,7 @@ function showOverlay(isOver) {
   el("pads").classList.add("hidden");
   boostBox.classList.add("hidden");
   el("stats").classList.toggle("show", !!isOver);
+  el("panel").classList.toggle("ende", !!isOver);   // steuert die knappen Handy-Layouts
   document.querySelector(".tips").style.display = isOver ? "none" : "";   // nach dem Crash unnötig
   if (isOver) {
     el("title").innerHTML = G.reason;

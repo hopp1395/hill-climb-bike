@@ -529,7 +529,9 @@ function resize() {
   st.setProperty("--versteckt", versteckt + "px");
   cvs.width = Math.round(W * DPR); cvs.height = Math.round(H * DPR);
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  SCALE = Math.max(0.5, Math.min(1.15, H / 780));
+  // Nenner größer = kleinerer Maßstab = mehr Welt im Bild. 900 statt 780 zeigt
+  // rund 15 % mehr Strecke und Höhe, ohne dass das Bike zu klein wird.
+  SCALE = Math.max(0.44, Math.min(1.0, H / 900));
 }
 addEventListener("resize", resize);
 addEventListener("orientationchange", resize);
@@ -1598,10 +1600,15 @@ function heliFangen() {
     let zx = h.x + 900;
     for (let i = Math.ceil(h.x / TSTEP); i < TFIELD.length; i++)
       if (TFIELD[i] >= ziel) { zx = i * TSTEP; break; }
-    for (let k = 0; k < 40; k++) {                 // bis 40*TSTEP weiter suchen
-      if (Math.abs(slopeAt(zx)) < 0.35) break;
-      zx += TSTEP;
+    // das FLACHSTE Fleckchen im Fenster nehmen, nicht das erste unter einer
+    // Schwelle: fand die Suche nichts, blieb sonst der ursprüngliche Steilhang
+    // stehen und man rutschte sofort wieder hinunter.
+    let bx2 = zx, bs = Math.abs(slopeAt(zx));
+    for (let k = 1; k <= 60 && bs > 0.18; k++) {
+      const x = zx + k * TSTEP, s = Math.abs(slopeAt(x));
+      if (s < bs) { bs = s; bx2 = x; }
     }
+    zx = bx2;
     G.heli = { t: 0, x0: bx, y0: by, hx: h.x, hy: h.y,
                zx, zy: terrainY(zx) + CFG.WHEEL_R + 6 };
     G.airTime = 0; G.spinAcc = 0;          // der Mitflug ist kein Salto
@@ -1657,6 +1664,7 @@ function update(dt) {
       G.boost = Math.min(100, G.boost + chg * dt);
     }
   }
+  if (DBG.boost) G.boost = 100;      // Testmodus: Leiste bleibt voll
 
   // Mitflug: solange der Heli trägt, ruht die Physik und das Bike wird an
   // seiner Kufe entlang zum Absetzpunkt gezogen.
@@ -2632,7 +2640,8 @@ function drawAbspann() {
      Berg zur rechten Seite wieder ab – gespiegelt und gestaucht, damit es eine
      Bergsilhouette wird und kein abgeschnittener Anstieg. */
   const lx = 0, rx = W, gx = W * 0.64;
-  const oben = H * 0.17, unten = H * 0.94;
+  // oben genug Luft lassen: darüber steht noch das Sternbild
+  const oben = H * 0.24, unten = H * 0.94;
   const py = y => unten - (unten - oben) * Math.min(1, y / PROFIL.max);
   const pxAuf = i => lx + (gx - lx) * (i / PROFIL.n);
   const pxAb = i => gx + (rx - gx) * (1 - i / PROFIL.n);
@@ -2648,7 +2657,7 @@ function drawAbspann() {
   /* --- Hintergrund je Schicht ------------------------------------------
      Von unten nach oben: Taghimmel über dem Tal, Dämmerung über Schnee und
      Eis, Glut über dem Vulkan, Weltall darüber. */
-  const himmel = ctx.createLinearGradient(0, unten, 0, oben - H * 0.17);
+  const himmel = ctx.createLinearGradient(0, unten, 0, oben - H * 0.24);
   himmel.addColorStop(0, "#7fb0dd");
   himmel.addColorStop(bei(CFG.SNOWLINE), "#6b9ccd");
   himmel.addColorStop(bei(CFG.ICELINE), "#40628f");
@@ -2656,10 +2665,10 @@ function drawAbspann() {
   himmel.addColorStop(bei(CFG.SPACELINE), "#141a33");
   himmel.addColorStop(1, "#05070f");
   ctx.fillStyle = himmel;
-  ctx.fillRect(lx - W, oben - H * 0.17, W * 3, unten - oben + H * 0.17);
+  ctx.fillRect(lx - W, oben - H * 0.24, W * 3, unten - oben + H * 0.24);
 
   // Sterne: je höher, desto mehr – unten über dem Tal ist Tag
-  const yEis = py(CFG.ICELINE), yOben = oben - H * 0.16;
+  const yEis = py(CFG.ICELINE), yOben = oben - H * 0.23;
   for (const s of AB_STERNE) {
     const Y = yOben + (yEis - yOben) * s.y;
     const nah = 1 - (Y - yOben) / Math.max(1, yEis - yOben);   // 1 = ganz oben
@@ -4751,7 +4760,7 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) alleZ
    springt an die Stellen, die man sonst erst erfahren muss. Die Tasten wirken
    nur, solange das Feld offen ist.
    ========================================================================= */
-const DBG = { on: false, god: false, hold: false, forced: "", tank: false };
+const DBG = { on: false, god: false, hold: false, forced: "", tank: false, boost: false };
 
 function setWea(k) {
   DBG.hold = true; DBG.forced = k;
@@ -4843,6 +4852,9 @@ const DBG_ACT = [
   ["Leben +1", "0", () => { G.lives++; }],
   ["Unsterblich", "u", () => { DBG.god = !DBG.god; syncDbg(); }],
   ["Sprit unendlich", "t", () => { DBG.tank = !DBG.tank; if (DBG.tank) G.fuel = 100; syncDbg(); }],
+  ["Boost unendlich", "i", () => { DBG.boost = !DBG.boost; if (DBG.boost) G.boost = 100; syncDbg(); }],
+  // "s" liegt schon auf "Rauf in den Schnee", darum "o" wie Over
+  ["Sterben", "o", () => { if (needPlay()) gameOver("💀 Testmodus"); }],
   ["Wetter zufällig", "z", () => { DBG.hold = false; WEA.left = Math.min(WEA.left, 1); WEA.next = 2; syncDbg(); }],
   ["Nächste Brücke", "b", () => tpNext(RAVINES.filter(r => r.bruecke && !r.lava)
                                               .map(r => r.bx1 - 300))],
@@ -4923,6 +4935,7 @@ function syncDbg() {
   for (const [, key, arg] of DBG_WEA) dbgBtns[key].classList.toggle("on", arg === WEA.kind);
   dbgBtns.u.classList.toggle("on", DBG.god);
   dbgBtns.t.classList.toggle("on", DBG.tank);
+  dbgBtns.i.classList.toggle("on", DBG.boost);
   dbgBtns.z.classList.toggle("on", !DBG.hold);
 }
 

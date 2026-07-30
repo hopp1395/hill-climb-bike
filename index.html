@@ -446,6 +446,8 @@ const CFG = {
   FINAL_SLOPE0: 0.55,  // 28,8° am Fuß
   FINAL_SLOPE1: 1.15,  // 49,0° an der Kante
   FINAL_DROP: 1.3,     // so steil fällt der Berg hinter dem Gipfel ab
+  FINAL_LIP: 300,      // px flache Schanzenlippe direkt vor dem Absprung
+  FINAL_LIP_SLOPE: 0.16,   // 9° – ruhig genug, um das Bike gerade zu legen
   WELTALL_ZEIT: 6,     // s Schwebeflug nach dem Absprung, dann kommt der Abspann
   ABSPANN_ZEIT: 8,     // s Rückblick: auszoomen, Route nachzeichnen, Sternbild
   /* Mitflug: der Heli hängt hinter und über einer Schanzenkante.
@@ -579,7 +581,7 @@ const GRADE = {
       // Alle Abschnitte auf die halbe Höhe: Schnee 50, Eis 125, Vulkan 250,
       // Sterne 375, Gipfel 500 m.
       SNOWLINE: 1300, ICELINE: 3250, LAVALINE: 6500, SPACELINE: 9750,
-      GIPFEL: 13000, FINAL_RISE: 650, FINAL_FLAT: 260,
+      GIPFEL: 13000, FINAL_RISE: 650, FINAL_FLAT: 260, FINAL_LIP: 150,
       SLOPE_CAP: 0.78,        // flacher: 38° statt 44° als Deckel
       CAN_SPACING: 2100,      // Kanister deutlich öfter
     },
@@ -613,6 +615,9 @@ function setzeGrad(name) {
     { y: CFG.SPACELINE, icon: "✨", name: "Sternenzone" },
     { y: CFG.GIPFEL,    icon: "🚀", name: "Schwerelos" },
   ];
+  bauRampen();          // Bodenfarben hängen an den Gebietshöhen
+  bauAbZonen();         // ebenso die Beschriftung der Schlussgrafik
+  PROFIL = null; ABKARTE = null;     // Schlussgrafik gehört zur alten Welt
   try { localStorage.setItem("hcb.grad", name); } catch (e) {}
   ladeBest();
 }
@@ -1099,15 +1104,28 @@ function bauFinale() {
   const s0 = CFG.FINAL_SLOPE0, s1 = CFG.FINAL_SLOPE1;
   const xBahn = i0 * TSTEP;
   const xBerg = xBahn + CFG.FINAL_FLAT;
-  const L = CFG.FINAL_RISE / ((s0 + s1) / 2);
-  const xGipfel = xBerg + L;
-  FINALE = { xBahn, xBerg, xGipfel, bahn, L, s0, s1 };
+  /* Oben eine flache Schanzenlippe: die letzten FINAL_LIP Pixel steigen nur
+     noch sanft an, statt direkt aus der steilsten Stelle abzuheben. So hat man
+     kurz vor dem Absprung ein Stück ruhigen Boden, kann das Bike gerade legen
+     und geht kontrolliert in die Luft. Der Gipfel liegt weiterhin genau auf
+     GIPFEL, nur die Höhe verteilt sich anders. */
+  const Lk = CFG.FINAL_LIP, sk = CFG.FINAL_LIP_SLOPE;
+  const Rk = Lk * sk;                              // Höhe, die die Lippe bringt
+  const Lm = (CFG.FINAL_RISE - Rk) / ((s0 + s1) / 2);   // Rest für die Rampe
+  const xLippe = xBerg + Lm;
+  const xGipfel = xLippe + Lk;
+  const L = Lm + Lk;
+  FINALE = { xBahn, xBerg, xLippe, xGipfel, bahn, L, s0, s1 };
   for (let i = i0; i < TFIELD.length; i++) {
     const x = i * TSTEP;
     if (x <= xBerg) { TFIELD[i] = bahn; continue; }
+    if (x <= xLippe) {
+      const u = (x - xBerg) / Lm;
+      TFIELD[i] = bahn + Lm * (s0 * u + (s1 - s0) * u * u / 2);
+      continue;
+    }
     if (x <= xGipfel) {
-      const u = (x - xBerg) / L;
-      TFIELD[i] = bahn + L * (s0 * u + (s1 - s0) * u * u / 2);
+      TFIELD[i] = bahn + (CFG.FINAL_RISE - Rk) + (x - xLippe) * sk;
       continue;
     }
     TFIELD[i] = Math.max(bahn, CFG.GIPFEL - (x - xGipfel) * CFG.FINAL_DROP);
@@ -2315,39 +2333,50 @@ function heightGrad(stops) {
   for (const [y, c] of stops) g.addColorStop((yTop - y) / (yTop - yBot), c);
   return g;
 }
-const _SL = CFG.SNOWLINE, _IL = CFG.ICELINE, _VL = CFG.LAVALINE, _WL = CFG.SPACELINE;
-const RAMP_BODY = [
-  [_SL - CFG.SNOW_FADE, "#5d4a3a"],        // Fels
-  [_SL - 120,           "#a9b3c2"],        // Übergang
-  [_SL + 600,           "#f2f6fb"],        // Schnee
-  [_IL - 700,           "#eaf5fc"],        // Firn
-  [_IL + 2200,          "#8ecbe6"],        // Gletschereis
-  [_VL - 400,           "#6f93a8"],        // Eis wird schmutzig
-  [_VL + 2200,          "#3b2f33"],        // Vulkangestein
-  [_WL - 400,           "#312a33"],
-  [_WL + 2400,          "#2a2f45"],        // kalter Sternenfels
-];
-const RAMP_EDGE = [
-  [_SL - CFG.SNOW_FADE, "#5aa84f"],        // Gras
-  [_SL - 120,           "#dfe7ee"],
-  [_SL + 600,           "#ffffff"],
-  [_IL - 700,           "#ffffff"],
-  [_IL + 2200,          "#c6f1ff"],        // Eiskante
-  [_VL - 400,           "#9fb6bd"],
-  [_VL + 2200,          "#e0642a"],        // glühende Bruchkante
-  [_WL - 400,           "#8a6a70"],
-  [_WL + 2400,          "#cdd8ee"],        // Frostrand im Sternenlicht
-];
-// Auflage unter der Kante: lässt Schnee und Eis dick aussehen, auf Fels nichts
-const RAMP_DECK = [
-  [_SL - CFG.SNOW_FADE, "rgba(48,36,26,.5)"],   // Erdschicht unter dem Gras
-  [_SL - 200,           "rgba(120,124,134,.2)"],
-  [_SL + 900,           "rgba(255,255,255,.4)"],// Schneedecke
-  [_IL + 2200,          "rgba(206,244,255,.5)"],// Eisdecke
-  [_VL - 400,           "rgba(150,170,180,.3)"],
-  [_VL + 2200,          "rgba(120,52,30,.45)"], // verbackene Kruste
-  [_WL + 2400,          "rgba(180,196,224,.3)"],// Staubschicht
-];
+/* Die Farbstufen des Bodens hängen an den Gebietshöhen – und die hängen am
+   Schwierigkeitsgrad. Sie werden deshalb bei jedem Gradwechsel neu gebaut;
+   vorher standen sie fest auf den Werten von "Normal", und im leichten Grad
+   blieb der Boden bis weit über die Schneegrenze hinaus Fels. Auch die
+   Abstände zu den Grenzen skalieren mit, sonst wären die Übergänge auf der
+   halben Strecke doppelt so breit. */
+let RAMP_BODY = [], RAMP_EDGE = [], RAMP_DECK = [];
+
+function bauRampen() {
+  const SL = CFG.SNOWLINE, IL = CFG.ICELINE, VL = CFG.LAVALINE, WL = CFG.SPACELINE;
+  const s = v => v * (CFG.GIPFEL / CFG_BASIS.GIPFEL);   // 1 bei Normal, 0,5 bei Einfach
+  RAMP_BODY = [
+    [SL - CFG.SNOW_FADE, "#5d4a3a"],       // Fels
+    [SL - s(120),        "#a9b3c2"],       // Übergang
+    [SL + s(600),        "#f2f6fb"],       // Schnee
+    [IL - s(700),        "#eaf5fc"],       // Firn
+    [IL + s(2200),       "#8ecbe6"],       // Gletschereis
+    [VL - s(400),        "#6f93a8"],       // Eis wird schmutzig
+    [VL + s(2200),       "#3b2f33"],       // Vulkangestein
+    [WL - s(400),        "#312a33"],
+    [WL + s(2400),       "#2a2f45"],       // kalter Sternenfels
+  ];
+  RAMP_EDGE = [
+    [SL - CFG.SNOW_FADE, "#5aa84f"],       // Gras
+    [SL - s(120),        "#dfe7ee"],
+    [SL + s(600),        "#ffffff"],
+    [IL - s(700),        "#ffffff"],
+    [IL + s(2200),       "#c6f1ff"],       // Eiskante
+    [VL - s(400),        "#9fb6bd"],
+    [VL + s(2200),       "#e0642a"],       // glühende Bruchkante
+    [WL - s(400),        "#8a6a70"],
+    [WL + s(2400),       "#cdd8ee"],       // Frostrand im Sternenlicht
+  ];
+  // Auflage unter der Kante: lässt Schnee und Eis dick aussehen, auf Fels nichts
+  RAMP_DECK = [
+    [SL - CFG.SNOW_FADE, "rgba(48,36,26,.5)"],    // Erdschicht unter dem Gras
+    [SL - s(200),        "rgba(120,124,134,.2)"],
+    [SL + s(900),        "rgba(255,255,255,.4)"], // Schneedecke
+    [IL + s(2200),       "rgba(206,244,255,.5)"], // Eisdecke
+    [VL - s(400),        "rgba(150,170,180,.3)"],
+    [VL + s(2200),       "rgba(120,52,30,.45)"],  // verbackene Kruste
+    [WL + s(2400),       "rgba(180,196,224,.3)"], // Staubschicht
+  ];
+}
 
 /* Anteil eines Gebiets an dieser Welthöhe (0 = noch nicht, 1 = voll da). Die
    Gebiete überlagern sich nicht: jedes blendet aus, sobald das nächste kommt,
@@ -2858,12 +2887,18 @@ function bauProfil() {
 const AB_STERNE = Array.from({ length: 120 }, (_, i) => ({
   x: hash(i * 1.7 + 3), y: hash(i * 5.1 + 8), s: 0.5 + hash(i * 3.3 + 2) * 1.3,
 }));
-const AB_ZONEN = [
-  { y: CFG.SNOWLINE,  name: "Schnee", farbe: [214, 228, 244] },
-  { y: CFG.ICELINE,   name: "Eis",    farbe: [168, 214, 240] },
-  { y: CFG.LAVALINE,  name: "Vulkan", farbe: [236, 152, 110] },
-  { y: CFG.SPACELINE, name: "Sterne", farbe: [186, 178, 240] },
-];
+/* Auch die Beschriftung der Schlussgrafik hing an den Höhen von "Normal" und
+   zeigte im leichten Grad 100/250/500/750 m, obwohl der Gipfel dort auf 500 m
+   liegt. Wird jetzt beim Gradwechsel mitgezogen. */
+let AB_ZONEN = [];
+function bauAbZonen() {
+  AB_ZONEN = [
+    { y: CFG.SNOWLINE,  name: "Schnee", farbe: [214, 228, 244] },
+    { y: CFG.ICELINE,   name: "Eis",    farbe: [168, 214, 240] },
+    { y: CFG.LAVALINE,  name: "Vulkan", farbe: [236, 152, 110] },
+    { y: CFG.SPACELINE, name: "Sterne", farbe: [186, 178, 240] },
+  ];
+}
 const AB_GALAXIEN = [
   { x: 0.16, y: 0.30, r: 1.25, dreh: 0.5,  ton: 0.15 },
   { x: 0.78, y: 0.20, r: 0.85, dreh: -0.8, ton: 0.7 },

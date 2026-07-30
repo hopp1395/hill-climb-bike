@@ -309,6 +309,7 @@
       <div class="lbl" id="hHeightLbl">Höhe</div>
       <div class="val" id="hHeight">0<small> m</small></div>
       <div class="lbl" id="hLives" style="display:none;color:#7ee0a1;opacity:.9">🛡 Schutzengel</div>
+      <div class="lbl" id="hGeist" style="display:none;opacity:.9;text-transform:none">👻</div>
     </div>
     <div class="card" id="weaCard" style="display:none">
       <div class="lbl">Wetter</div>
@@ -666,6 +667,7 @@ function setzeGrad(name) {
   bauRampen();          // Bodenfarben hängen an den Gebietshöhen
   bauAbZonen();         // ebenso die Beschriftung der Schlussgrafik
   if (typeof syncDbgNamen === "function") syncDbgNamen();   // Testmodus-Knöpfe
+  ladeGeist();          // jeder Modus hat seinen eigenen Geist
   PROFIL = null; ABKARTE = null;     // Schlussgrafik gehört zur alten Welt
   try { localStorage.setItem("hcb.grad", name); } catch (e) {}
   ladeBest();
@@ -1538,6 +1540,39 @@ let ZONES = [
 ];
 const cans = new Map();    // index -> eingesammelt?
 
+/* ---- Geisterrennen -------------------------------------------------------
+   Vom besten Lauf wird alle GEIST_DT Sekunden die x-Position mitgeschrieben;
+   der Index im Feld ist damit die Zeit. Beim nächsten Lauf fährt dieser Geist
+   noch einmal mit.
+
+   Die Welt wird pro Runde neu gewürfelt, die alte Strecke gibt es also nicht
+   mehr. Der Geist wird deshalb auf das AKTUELLE Gelände gesetzt: er behält
+   sein Tempo, fährt aber den Boden, der jetzt da ist. Damit ist es ein Rennen
+   gegen die eigene Bestzeit und keine Wiederholung einer Aufnahme. */
+const GEIST_DT = 0.1;
+const GEIST = { spur: null, t: 0, auf: [], next: 0 };
+
+function geistKey() { return "hcb.geist" + (GRAD === "normal" ? "" : "." + GRAD); }
+function ladeGeist() {
+  try {
+    const r = JSON.parse(localStorage.getItem(geistKey()) || "null");
+    GEIST.spur = Array.isArray(r) && r.length > 4 ? r : null;
+  } catch (e) { GEIST.spur = null; }
+}
+function speichereGeist() {
+  if (GEIST.auf.length < 5) return;
+  try { localStorage.setItem(geistKey(), JSON.stringify(GEIST.auf)); } catch (e) {}
+}
+// Position des Geistes zur aktuellen Laufzeit, oder null wenn er durch ist
+function geistX() {
+  const sp = GEIST.spur;
+  if (!sp) return null;
+  const i = GEIST.t / GEIST_DT;
+  if (i >= sp.length - 1) return null;
+  const i0 = Math.floor(i), f = i - i0;
+  return sp[i0] + (sp[i0 + 1] - sp[i0]) * f;
+}
+
 function canPos(k) {
   const x = k * CFG.CAN_SPACING + 500 + hash(k * 3.7) * 400;
   return { x, y: terrainY(x) + 20 };
@@ -1861,6 +1896,8 @@ function reset() {
   cans.clear();
   weatherReset();
   gefReset();
+  GEIST.auf = []; GEIST.t = 0; GEIST.next = 0;
+  ladeGeist();
   GRAVK = 1;
   cam.x = rear.x; cam.y = rear.y;
   IN.gas = IN.brake = IN.boost = false;
@@ -1918,7 +1955,11 @@ function gameOver(reason) {
   G.state = "over";
   G.reason = reason;
   const sc = Math.floor(G.score);
-  if (sc > G.best) { G.best = sc; try { localStorage.setItem(bestKey(), String(sc)); } catch (e) {} }
+  if (sc > G.best) {
+    G.best = sc;
+    try { localStorage.setItem(bestKey(), String(sc)); } catch (e) {}
+    speichereGeist();        // der beste Lauf wird zum neuen Geist
+  }
   G.earned = Math.floor(sc / 100);          // je 100 Punkte ein Coin
   if (G.earned > 0) { coins += G.earned; saveProgress(); }
   showOverlay(true);
@@ -2016,6 +2057,13 @@ function update(dt) {
 
   // Wetter vor der Physik: Grip, Wind und Gravitation gelten für diesen Schritt.
   // Ein Blitz kann die Runde hier schon beenden.
+  // Geisterspur mitschreiben – fester Takt, damit der Index die Zeit ist
+  GEIST.t += dt;
+  while (GEIST.t >= GEIST.next) {
+    GEIST.auf.push(Math.round(bikeX()));
+    GEIST.next += GEIST_DT;
+  }
+
   updateWeather(dt);
   if (G.state !== "play") return;
   updateGefahren(dt);
@@ -3603,6 +3651,41 @@ function beschriftung(u, M) {
 }
 
 /* ---- Gefahren zeichnen -------------------------------------------------- */
+/* Der Geist als durchscheinende Silhouette. Er fährt auf dem Boden, der jetzt
+   da ist – gezeichnet wird er im selben lokalen System wie das Bike. */
+function drawGeist() {
+  const gx = geistX();
+  if (gx === null) return;
+  const px = sx(gx);
+  if (px < -140 || px > W + 140) return;
+  const gy = terrainY(gx) + CFG.WHEEL_R;
+  const ang = Math.atan(slopeAt(gx));
+  const hb = CFG.WHEELBASE / 2;
+  ctx.save();
+  ctx.translate(px, sy(gy));
+  ctx.rotate(-ang);
+  ctx.scale(SCALE, SCALE);
+  ctx.globalAlpha = 0.42;
+  ctx.strokeStyle = "#cfe8ff"; ctx.lineWidth = 2.6; ctx.lineCap = "round";
+  ctx.beginPath();                                  // Räder
+  ctx.arc(-hb, 0, CFG.WHEEL_R, 0, 7);
+  ctx.moveTo(hb + CFG.WHEEL_R, 0); ctx.arc(hb, 0, CFG.WHEEL_R, 0, 7);
+  ctx.stroke();
+  ctx.beginPath();                                  // Rahmen und Lenker
+  ctx.moveTo(-hb, 0); ctx.lineTo(-8, -14); ctx.lineTo(10, -12); ctx.lineTo(hb, 0);
+  ctx.moveTo(10, -12); ctx.lineTo(20, -26);
+  ctx.stroke();
+  ctx.lineWidth = 5;                                // Fahrer
+  ctx.beginPath();
+  ctx.moveTo(-16, -20); ctx.lineTo(-3, -36);
+  ctx.moveTo(-4, -34); ctx.lineTo(18, -25);
+  ctx.stroke();
+  ctx.fillStyle = "#cfe8ff";
+  ctx.beginPath(); ctx.arc(0, -(CFG.HEAD_H + 11), 12, 0, 7); ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
 function drawGefahren() {
   const t = performance.now() / 1000;
 
@@ -4443,6 +4526,98 @@ function drawKammLeute(alt, par, amp, base, o) {
   }
 }
 
+/* ---- Bewuchs des Meeresgrundes ------------------------------------------
+   Vier Sorten nach Tiefe: Seegras und Seesterne im Flachen, Korallen und
+   Anemonen am Riff, Schwämme in der Dämmerzone, Röhrenwürmer mit Leuchtspitze
+   im Dunkeln. Gezeichnet wird im Hangsystem P(q, l) wie beim Landbewuchs,
+   damit alles senkrecht auf dem Grund steht. */
+function meerDeko(ctx2, art, s, r1, r2, t, ph) {
+  const c = (rgb, a) => rgba(rgb, a === undefined ? 1 : a);
+  if (art === "gras") {
+    ctx2.strokeStyle = c([96, 150, 92]); ctx2.lineCap = "round";
+    for (let i = 0; i < 5; i++) {
+      const h = (14 + r1 * 16) * (0.6 + i * 0.14);
+      const w = Math.sin(t * 1.1 + ph + i) * 0.34;
+      ctx2.lineWidth = 2.1 * s;
+      ctx2.beginPath();
+      ctx2.moveTo((i - 2) * 3.4 * s, 0);
+      ctx2.quadraticCurveTo((i - 2) * 3.4 * s + w * h * 0.6 * s, -h * 0.6 * s,
+                            (i - 2) * 3.4 * s + w * h * s, -h * s);
+      ctx2.stroke();
+    }
+  } else if (art === "stern") {
+    ctx2.fillStyle = c([214, 132, 96]);
+    ctx2.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const w = i * Math.PI / 5 - 1.57, r = (i % 2 ? 3 : 8) * s;
+      i ? ctx2.lineTo(Math.cos(w) * r, Math.sin(w) * r * 0.5 - 2 * s)
+        : ctx2.moveTo(Math.cos(w) * r, Math.sin(w) * r * 0.5 - 2 * s);
+    }
+    ctx2.closePath(); ctx2.fill();
+  } else if (art === "koralle") {
+    const farbe = r2 > 0.5 ? [226, 122, 140] : [232, 168, 92];
+    ctx2.strokeStyle = c(farbe); ctx2.lineCap = "round";
+    const H2 = (18 + r1 * 20) * s;
+    ctx2.lineWidth = 3.4 * s;
+    ctx2.beginPath(); ctx2.moveTo(0, 0); ctx2.lineTo(0, -H2 * 0.55); ctx2.stroke();
+    ctx2.lineWidth = 2.6 * s;
+    for (const d of [-1, 1]) {
+      ctx2.beginPath();
+      ctx2.moveTo(0, -H2 * 0.5);
+      ctx2.quadraticCurveTo(d * H2 * 0.4, -H2 * 0.7, d * H2 * 0.34, -H2);
+      ctx2.stroke();
+      ctx2.beginPath();
+      ctx2.moveTo(0, -H2 * 0.62);
+      ctx2.quadraticCurveTo(d * H2 * 0.2, -H2 * 0.85, d * H2 * 0.08, -H2 * 1.1);
+      ctx2.stroke();
+    }
+  } else if (art === "anemone") {
+    const farbe = r2 > 0.5 ? [180, 128, 220] : [232, 140, 120];
+    ctx2.fillStyle = c(farbe, 0.9);
+    ctx2.beginPath(); ctx2.ellipse(0, -3 * s, 6 * s, 4 * s, 0, 0, 7); ctx2.fill();
+    ctx2.strokeStyle = c(farbe, 0.75); ctx2.lineWidth = 1.6 * s; ctx2.lineCap = "round";
+    for (let i = 0; i < 7; i++) {
+      const w = -2.6 + i * 0.42 + Math.sin(t * 1.6 + ph + i) * 0.16;
+      const l = (8 + r1 * 7) * s;
+      ctx2.beginPath();
+      ctx2.moveTo(0, -4 * s);
+      ctx2.lineTo(Math.cos(w) * l, -4 * s + Math.sin(w) * l);
+      ctx2.stroke();
+    }
+  } else if (art === "schwamm") {
+    ctx2.fillStyle = c([132, 150, 158], 0.9);
+    const H2 = (12 + r1 * 16) * s, B = (7 + r2 * 6) * s;
+    ctx2.beginPath();
+    ctx2.moveTo(-B * 0.6, 0);
+    ctx2.quadraticCurveTo(-B, -H2 * 0.7, -B * 0.75, -H2);
+    ctx2.lineTo(B * 0.75, -H2);
+    ctx2.quadraticCurveTo(B, -H2 * 0.7, B * 0.6, 0);
+    ctx2.closePath(); ctx2.fill();
+    ctx2.fillStyle = c([40, 54, 66], 0.8);
+    ctx2.beginPath(); ctx2.ellipse(0, -H2, B * 0.72, B * 0.26, 0, 0, 7); ctx2.fill();
+  } else {                                   // Röhrenwurm mit Leuchtspitze
+    ctx2.strokeStyle = c([148, 148, 156], 0.85); ctx2.lineCap = "round";
+    for (let i = 0; i < 3; i++) {
+      const H2 = (14 + r1 * 22) * s * (0.7 + i * 0.2);
+      const dx = (i - 1) * 4 * s;
+      ctx2.lineWidth = 2.6 * s;
+      ctx2.beginPath();
+      ctx2.moveTo(dx, 0);
+      ctx2.quadraticCurveTo(dx + Math.sin(t * 0.7 + ph + i) * 4 * s, -H2 * 0.6,
+                            dx + Math.sin(t * 0.7 + ph + i) * 6 * s, -H2);
+      ctx2.stroke();
+      // Leuchtspitze aus zwei Kreisen statt eines Farbverlaufs: bei hunderten
+      // Objekten im Bild kostet createRadialGradient je Segment zu viel.
+      const gx2 = dx + Math.sin(t * 0.7 + ph + i) * 6 * s, gy2 = -H2;
+      const puls = 0.5 + 0.5 * Math.sin(t * 2 + ph + i * 1.7);
+      ctx2.fillStyle = c([80, 210, 210], 0.22 * puls);
+      ctx2.beginPath(); ctx2.arc(gx2, gy2, 6 * s, 0, 7); ctx2.fill();
+      ctx2.fillStyle = c([190, 255, 236], 0.9 * puls);
+      ctx2.beginPath(); ctx2.arc(gx2, gy2, 2 * s, 0, 7); ctx2.fill();
+    }
+  }
+}
+
 function bewuchs(schattenLauf) {
   const xl = wxAt(-40), xr = wxAt(W + 40), BST = 34;
   for (let k = Math.floor(xl / BST); k <= Math.ceil(xr / BST); k++) {
@@ -4457,8 +4632,36 @@ function bewuchs(schattenLauf) {
        auf den Grund grünes Gras. Er dünnt hier stattdessen mit der Tiefe aus:
        Seegras im Flachen, ab der Dämmerzone blanker Fels. */
     if (istMeer()) {
-      const dicht = 1 - smooth((-wy - CFG.ICELINE) / (CFG.SPACELINE - CFG.ICELINE));
+      // Seegras und Korallen dünnen aus, Tiefseebewuchs bleibt bis unten
+      const tief = -wy;
+      const dicht = 0.45 + 0.55 * (1 - smooth((tief - CFG.ICELINE) /
+                                              (CFG.SPACELINE - CFG.ICELINE)));
       if (r0 > 0.85 * dicht) continue;
+      const sl2 = slopeAt(wx);
+      if (Math.abs(sl2) > 1.2) continue;              // nicht an der Steilkante
+      const r1m = hash(k * 6.1 + 5), r2m = hash(k * 8.9 + 3);
+      const t2 = performance.now() / 1000, ph = hash(k * 3.3) * 6.28;
+      // Sorte nach Tiefe, mit weichem Übergang über die Würfelzahl
+      const f = Math.min(1, Math.max(0, tief / CFG.GIPFEL));
+      let variante;
+      if (f < 0.13)      variante = r1m < 0.72 ? "gras" : "stern";
+      else if (f < 0.3)  variante = r1m < 0.45 ? "gras" : r1m < 0.8 ? "koralle" : "anemone";
+      else if (f < 0.52) variante = r1m < 0.5 ? "koralle" : r1m < 0.82 ? "anemone" : "schwamm";
+      else if (f < 0.75) variante = r1m < 0.55 ? "schwamm" : "wurm";
+      else               variante = "wurm";
+      if (schattenLauf) continue;                     // unter Wasser kein Schlagschatten
+      const nl2 = Math.hypot(sl2, 1);
+      const X2 = sx(wx), Y2 = sy(wy);
+      const s2 = SCALE * (0.85 + hash(k * 7.3) * 0.6) * 1.25;
+      ctx.save();
+      ctx.translate(X2, Y2);
+      ctx.rotate(Math.atan(sl2) * -1);                // steht senkrecht zum Grund
+      // mit der Tiefe abdunkeln wie der Boden selbst
+      ctx.globalAlpha = 0.55 + 0.45 * (1 - f);
+      meerDeko(ctx, variante, s2, r1m, r2m, t2, ph);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+      continue;
     }
 
     // Gewichte der Stufen an dieser Stelle
@@ -5603,6 +5806,7 @@ function drawMeer() {
   if (yO > 0) { ctx.beginPath(); ctx.rect(0, yO, W, H - yO); ctx.clip(); }
   drawFische(FISCHE_NAH, 0.92, 2.1);  // große Einzelfische dicht an der Kamera
   ctx.restore();
+  drawGeist();
   // Beim Finale wird das Bike zusammengedrückt, nicht nur ausgeblendet
   const q = sternAnteil();
   if (q > 0.004) {
@@ -5654,6 +5858,7 @@ function draw() {
   drawCans();
   drawHelis();            // schweben über dem Gelände
   drawTornado();          // vor dem Gelände, aber hinter dem Bike
+  drawGeist();            // hinter dem eigenen Bike, damit es vorn bleibt
   drawBike();
   drawGefahren();         // Adler, Fangstrahl und Komet vor dem Bike
   drawSternbild();        // Finale: tritt hervor, während das Bike verblasst
@@ -5686,6 +5891,17 @@ function updateHUD() {
   el("hBest").textContent = G.best;
   el("hSpeed").textContent = Math.round(spd);
   el("hLives").style.display = G.lives > 0 ? "" : "none";
+  /* Abstand zum Geist in Metern Fortschritt – nicht in x, denn im Meer zählt
+     die Tiefe. Positiv heißt: man liegt vorn. */
+  const gx = geistX();
+  const ge = el("hGeist");
+  if (gx === null) ge.style.display = "none";
+  else {
+    const d = (fortschritt((rear.y + front.y) / 2) - fortschritt(terrainY(gx))) / CFG.PPM;
+    ge.style.display = "";
+    ge.textContent = "👻 " + (d >= 0 ? "+" : "−") + Math.abs(Math.round(d)) + " m";
+    ge.style.color = d >= 0 ? "#7ee0a1" : "#ffb4a2";
+  }
   fuelFill.style.width = G.fuel + "%";
   fuelFill.classList.toggle("low", G.fuel < 25);
   boostFill.style.width = G.boost + "%";

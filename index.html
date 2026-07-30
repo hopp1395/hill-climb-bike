@@ -99,12 +99,19 @@
   /* Am Handy frisst die Browserleiste ein Fünftel der Höhe. Der Knopf sitzt
      oben mittig zwischen den beiden HUD-Karten und nur dort, wo wirklich mit
      dem Finger gespielt wird. */
-  #vollbild{position:fixed;top:calc(10px + env(safe-area-inset-top));left:50%;
-    transform:translateX(-50%);z-index:4;display:none;
+  /* Zwei Knöpfe nebeneinander, zusammen mittig: Vollbild links, Testmodus
+     rechts. Der Testmodus hängt sonst nur an der Taste + und wäre am Handy
+     gar nicht erreichbar. */
+  #vollbild,#testKnopf{position:fixed;top:calc(10px + env(safe-area-inset-top));left:50%;
+    z-index:4;display:none;
     width:44px;height:44px;border-radius:12px;cursor:pointer;font:inherit;font-size:19px;color:#fff;
     background:rgba(8,14,30,.45);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.12)}
-  #vollbild:active{transform:translateX(-50%) scale(.93)}
-  @media (pointer:coarse){ #vollbild{display:block} }
+  #vollbild{transform:translateX(calc(-50% - 26px))}
+  #testKnopf{transform:translateX(calc(-50% + 26px));font-size:17px}
+  #vollbild:active{transform:translateX(calc(-50% - 26px)) scale(.93)}
+  #testKnopf:active{transform:translateX(calc(-50% + 26px)) scale(.93)}
+  #testKnopf.on{border-color:rgba(255,214,130,.75);color:#ffd166}
+  @media (pointer:coarse){ #vollbild,#testKnopf{display:block} }
 
   #quer{position:fixed;top:0;left:0;right:0;height:var(--vh);z-index:20;
     display:none;place-items:center;text-align:center;
@@ -263,15 +270,25 @@
   .char .nm{font-size:11px;font-weight:600;line-height:1.2;word-break:break-word}
 
   /* ---------- Testmodus (Taste +) ---------- */
+  /* --vh statt 100vh, sonst reicht das Feld am Handy unter die Browserleiste.
+     touch-action muss ausdrücklich stehen: der body steht auf "none", und ohne
+     das ließe sich die lange Knopfliste mit dem Finger nicht scrollen. */
   #dbg{position:fixed;top:12px;left:50%;transform:translateX(-50%);width:min(320px,calc(100vw - 24px));
     z-index:6;background:rgba(8,14,30,.86);backdrop-filter:blur(8px);
     border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:10px 12px 12px;
-    font-size:12px;line-height:1.45;max-height:calc(100vh - 24px);overflow:auto;
+    font-size:12px;line-height:1.45;max-height:calc(var(--vh) - 24px);overflow:auto;
+    touch-action:pan-y;-webkit-overflow-scrolling:touch;
     box-shadow:0 18px 44px rgba(0,0,0,.5)}
   #dbg.hidden{display:none}
   #dbg h3{font-size:10px;letter-spacing:.14em;text-transform:uppercase;opacity:.55;
     margin:10px 0 6px;font-weight:700}
   #dbg h3:first-child{margin-top:0}
+  .dKopf{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px}
+  .dKopf h3{margin:0}
+  .dZu{width:30px;height:30px;flex:0 0 auto;border-radius:9px;cursor:pointer;font:inherit;
+    font-size:15px;line-height:1;color:#fff;background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.2)}
+  .dZu:active{transform:scale(.92)}
   .dGrid{display:flex;flex-wrap:wrap;gap:5px}
   .dBtn{flex:1 1 88px;padding:6px 8px;border:1px solid rgba(255,255,255,.18);border-radius:8px;
     background:rgba(255,255,255,.06);cursor:pointer;font:inherit;font-size:11.5px;color:#fff;
@@ -324,6 +341,7 @@
 </div>
 
 <button id="vollbild" title="Vollbild" aria-label="Vollbild">⛶</button>
+<button id="testKnopf" title="Testmodus" aria-label="Testmodus">🛠</button>
 
 <div id="quer">
   <div>
@@ -5550,7 +5568,13 @@ function buildDbg() {
       dbgBtns[key] = b;
     }
   };
-  add("h3", "", "Testmodus · + schließt", dbgEl);
+  /* Kopfzeile mit Schließkreuz: das offene Feld deckt den Werkzeug-Knopf oben
+     zu, und "+ schließt" hilft ohne Tastatur nicht weiter. */
+  const kopf = add("div", "dKopf", "", dbgEl);
+  add("h3", "", "Testmodus", kopf);
+  const zu = add("button", "dZu", "✕", kopf);
+  zu.onmousedown = e => e.preventDefault();
+  zu.onclick = toggleDbg;
   sect("Wetter", DBG_WEA);
   sect("Aktionen", DBG_ACT);
   const s = add("div", "", "", dbgEl);
@@ -5584,8 +5608,10 @@ function dbgStatus() {
 function toggleDbg() {
   DBG.on = !DBG.on;
   dbgEl.classList.toggle("hidden", !DBG.on);
+  el("testKnopf").classList.toggle("on", DBG.on);
   if (DBG.on) { syncDbg(); el("dState").textContent = dbgStatus(); }
 }
+el("testKnopf").addEventListener("click", toggleDbg);
 
 function dbgKey(k) {
   const b = dbgBtns[k.toLowerCase()];

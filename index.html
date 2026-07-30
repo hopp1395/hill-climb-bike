@@ -2783,8 +2783,7 @@ function drawTerrain() {
   ctx.lineWidth = 7 * SCALE; ctx.lineJoin = "round"; ctx.stroke(surf);
 
   ctx.save();
-  ctx.clip(body);                   // Pfad und Schatten liegen auf dem Boden
-  drawPfad();
+  ctx.clip(body);                   // Schatten liegen auf dem Boden
   bewuchs(true);
   drawLeute(true);
   ctx.restore();
@@ -3046,32 +3045,7 @@ function drawLeute(schattenLauf) {
   }
 }
 
-/* Trampelpfad im Tal und im Schnee: eine hellere, gestrichelte Spur entlang
-   der Oberfläche. Höher hinauf gibt es keine Wege mehr. */
-function drawPfad() {
-  const xl = wxAt(-40), xr = wxAt(W + 40);
-  ctx.save();
-  ctx.lineCap = "round";
-  // Breit angelegt: die obere Hälfte schneidet der Clip auf den Berg weg,
-  // sichtbar bleibt ein Streifen direkt unter der Grasnarbe.
-  ctx.setLineDash([15 * SCALE, 8 * SCALE]);
-  ctx.lineWidth = 12 * SCALE;
-  for (let x = xl; x <= xr; x += 14) {
-    const wy = terrainY(x) - jumpRise(x, true);
-    const da = 1 - smooth((wy - CFG.SNOWLINE - 400) / 900);   // bis über die Schneegrenze
-    if (da < 0.05 || Math.abs(slopeAt(x)) > 0.55) continue;
-    const wy2 = terrainY(x + 14) - jumpRise(x + 14, true);
-    const schnee = smooth((wy - CFG.SNOWLINE + 400) / 900);
-    ctx.strokeStyle = rgba(lerp3([168, 140, 100], [216, 228, 240], schnee), 0.6 * da);
-    ctx.beginPath();
-    ctx.moveTo(sx(x), sy(wy) + 3 * SCALE);
-    ctx.lineTo(sx(x + 14), sy(wy2) + 3 * SCALE);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-/* Kammweg und Wanderer auf den Hintergrundketten. Beide laufen mit derselben
+/* Wanderer auf den Hintergrundketten. Sie laufen mit derselben
    Parallaxe wie Wald und Häuser der jeweiligen Kette, sitzen also fest auf
    ihrem Berg statt mit der Kamera zu schwimmen. */
 function kammSteigung(x, amp, base) {

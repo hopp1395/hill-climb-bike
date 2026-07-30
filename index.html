@@ -2827,15 +2827,26 @@ function schattenBand(xm, halb, hoehe, alpha) {
    Wanderer mit Rucksack und Stock, am Vulkan Fachleute im Schutzanzug, in der
    Sternenzone Außerirdische. Sie gehen auf einem kurzen Stück hin und her –
    die Position kommt aus der Zeit, es wird also nichts gespeichert.       */
-const LEUT_STEP = 520;
+const LEUT_STEP = 300;
 
-function figur(ctx2, art, s, t, ph, hin) {
-  const schritt = Math.sin(t * 3.4 + ph * 5) * hin;      // Beinausschlag
-  const wippe = Math.abs(Math.cos(t * 3.4 + ph * 5)) * 1.2;
-  const F = { dorf:   { haut: "#e8b98d", kleid: "#4a6fa5", bein: "#39405a" },
-              wander: { haut: "#e8b98d", kleid: "#c8503c", bein: "#3a4256" },
-              vulkan: { haut: "#f0d9a8", kleid: "#e8a33c", bein: "#8a6428" },
-              alien:  { haut: "#8fe07a", kleid: "#4c8f6a", bein: "#2f5c46" } }[art];
+const LEUT_FARBEN = {
+  dorf:   { haut: [232, 185, 141], kleid: [74, 111, 165], bein: [57, 64, 90] },
+  wander: { haut: [232, 185, 141], kleid: [200, 80, 60],  bein: [58, 66, 86] },
+  vulkan: { haut: [240, 217, 168], kleid: [232, 163, 60], bein: [138, 100, 40] },
+  alien:  { haut: [143, 224, 122], kleid: [76, 143, 106], bein: [47, 92, 70] },
+};
+
+/* fern = {ziel, f} blendet alle Farben in Richtung der Hintergrundfarbe. Die
+   Leute auf den Ketten müssen sich genauso in die Ferne einreihen wie Wald und
+   Häuser dort, sonst kleben knallbunte Figuren auf einem blassen Berg. */
+/* tempo (0..1) ist der Ausschlag von Beinen und Armen. Wer nur einen Meter
+   Platz hat, tritt von einem Fuß auf den anderen statt auszuschreiten. */
+function figur(ctx2, art, s, t, ph, tempo, fern) {
+  const schritt = Math.sin(t * 3.4 + ph * 5) * tempo;    // Beinausschlag
+  const wippe = Math.abs(Math.cos(t * 3.4 + ph * 5)) * 1.2 * tempo;
+  const roh = LEUT_FARBEN[art];
+  const c = (rgb, a) => rgba(fern ? lerp3(rgb, fern.ziel, fern.f) : rgb, a === undefined ? 1 : a);
+  const F = { haut: c(roh.haut), kleid: c(roh.kleid), bein: c(roh.bein) };
   ctx2.save();
   ctx2.scale(s, s);
   ctx2.translate(0, -wippe);
@@ -2855,13 +2866,13 @@ function figur(ctx2, art, s, t, ph, hin) {
   ctx2.moveTo(3, -27);  ctx2.lineTo(schritt * 3 + 4, -17);
   ctx2.stroke();
   if (art === "wander") {                                // Rucksack und Stock
-    ctx2.fillStyle = "#3f6b46";
+    ctx2.fillStyle = c([63, 107, 70]);
     ctx2.beginPath(); ctx2.roundRect(-8, -28, 5, 13, 2); ctx2.fill();
-    ctx2.strokeStyle = "#a98150"; ctx2.lineWidth = 1.6;
+    ctx2.strokeStyle = c([169, 129, 80]); ctx2.lineWidth = 1.6;
     ctx2.beginPath(); ctx2.moveTo(6, -20); ctx2.lineTo(8, 1); ctx2.stroke();
   }
   if (art === "vulkan") {                                // Messgerät am Arm
-    ctx2.fillStyle = "#2f3644";
+    ctx2.fillStyle = c([47, 54, 68]);
     ctx2.fillRect(schritt * 3 + 2, -20, 5, 4);
   }
   // Kopf
@@ -2873,7 +2884,7 @@ function figur(ctx2, art, s, t, ph, hin) {
     ctx2.moveTo(-2.5, -44); ctx2.lineTo(-4, -50);
     ctx2.moveTo(2.5, -44);  ctx2.lineTo(4, -50);
     ctx2.stroke();
-    ctx2.fillStyle = "#16241c";
+    ctx2.fillStyle = c([22, 36, 28]);
     ctx2.beginPath();
     ctx2.ellipse(-2.4, -38, 1.9, 2.6, -0.3, 0, 7);
     ctx2.ellipse(2.4, -38, 1.9, 2.6, 0.3, 0, 7);
@@ -2881,40 +2892,94 @@ function figur(ctx2, art, s, t, ph, hin) {
   } else {
     ctx2.beginPath(); ctx2.arc(0, -35, 5, 0, 7); ctx2.fill();
     if (art === "vulkan") {                              // Helm mit Visier
-      ctx2.fillStyle = "#f0c469";
+      ctx2.fillStyle = c([240, 196, 105]);
       ctx2.beginPath(); ctx2.arc(0, -36, 6, Math.PI, 2 * Math.PI); ctx2.fill();
-      ctx2.fillStyle = "rgba(60,80,110,.75)";
+      ctx2.fillStyle = c([60, 80, 110], 0.75);
       ctx2.fillRect(-5, -36, 10, 3.5);
     } else if (art === "wander") {                       // Mütze
-      ctx2.fillStyle = "#c8503c";
+      ctx2.fillStyle = c([200, 80, 60]);
       ctx2.beginPath(); ctx2.arc(0, -36, 5.4, Math.PI, 2 * Math.PI); ctx2.fill();
     }
   }
   ctx2.restore();
 }
 
+/* Taugt die Stelle zum Stehen und Gehen? Steilhang, Lavabecken und Geysire
+   nicht. Die Steigungsgrenze wächst mit der Höhe: unten im Dorf geht niemand
+   eine Böschung entlang, aber Vulkanologen und Aliens sind genau deshalb da,
+   wo es steil ist – mit der starren Grenze von 0.4 blieben ab 500 m nur noch
+   knapp 60 % der Plätze übrig und man begegnete oft niemandem mehr. */
+function begehbar(x) {
+  const grenze = 0.4 + 0.16 * smooth((terrainY(x) - CFG.ICELINE) / 7000);
+  if (Math.abs(slopeAt(x)) > grenze) return false;
+  if (poolAt(x)) return false;
+  for (const g of GEYSERS) if (Math.abs(g.x - x) < 90) return false;
+  return true;
+}
+
+/* Standort, Laufweite und Sorte hängen nur am Gelände, nicht an der Zeit –
+   deshalb einmal je Rasterfeld ausrechnen und merken.
+
+   Vorher wurde bei jedem Bild die Steigung an der AKTUELLEN Schrittposition
+   geprüft. Wer im Gehen an eine steile Stelle geriet, löste sich mitten im
+   Schritt auf und kam Sekunden später wieder – ohne erkennbaren Grund. Auch
+   die Sorte hing an der Laufposition und konnte unterwegs umspringen. Jetzt
+   wird die Laufweite so weit eingekürzt, bis die ganze Strecke begehbar ist;
+   geht das nicht, steht dort von vornherein niemand. */
+const LEUT_CACHE = new Map();
+
+function leutePlatz(k) {
+  if (LEUT_CACHE.has(k)) return LEUT_CACHE.get(k);
+  let platz = null;
+  /* Nicht auf einen festen Punkt im Raster setzen: über 80 % der Felder liegen
+     am Steilhang, dort stünde dann einfach niemand. Stattdessen das Feld
+     abtasten und die flachste begehbare Stelle nehmen – so wie das Gelände
+     auch für Lavabecken und Schanzen nach passenden Plätzen absucht. */
+  let heim = null, flachste = Infinity;
+  for (let i = 0; i < 14; i++) {
+    const x = (k + (i + hash(k * 2.9 + 1)) / 14) * LEUT_STEP;
+    if (!begehbar(x)) continue;
+    const s = Math.abs(slopeAt(x));
+    if (s < flachste) { flachste = s; heim = x; }
+  }
+  if (heim !== null) {
+    // Die ganze Strecke abtasten, nicht nur die Endpunkte: eine steile Stelle
+    // mittendrin rutscht sonst durch und der Wanderer klettert eine Wand hoch.
+    const streckeFrei = w => {
+      for (let i = -4; i <= 4; i++) if (!begehbar(heim + (i / 4) * w)) return false;
+      return true;
+    };
+    let weite = 60 + hash(k * 7.1) * 70;
+    while (weite > 6 && !streckeFrei(weite)) weite *= 0.62;
+    // Reicht es nirgends für eine Runde, bleibt die Person auf ihrem Fleck –
+    // besser als gar keine, und sie gerät so auch nicht an den Steilhang.
+    if (!streckeFrei(weite)) weite = 0;
+    const wy = terrainY(heim) - jumpRise(heim, true);
+    const eis = iceAt(wy), lava = lavaAt(wy), raum = spaceAt(wy);
+    const schnee = smooth((wy - CFG.SNOWLINE + 500) / 900) * (1 - eis - lava - raum);
+    platz = { heim, weite, ph: hash(k * 5.3 + 4) * 6.28,
+              art: raum > 0.4 ? "alien" : lava > 0.4 ? "vulkan"
+                 : (eis > 0.3 || schnee > 0.35) ? "wander" : "dorf" };
+  }
+  LEUT_CACHE.set(k, platz);
+  return platz;
+}
+
 function drawLeute(schattenLauf) {
   const xl = wxAt(-80), xr = wxAt(W + 80), t = performance.now() / 1000;
   for (let k = Math.floor(xl / LEUT_STEP); k <= Math.ceil(xr / LEUT_STEP); k++) {
     if (hash(k * 3.77 + 8.2) > 0.45) continue;
-    const heim = (k + hash(k * 2.9 + 1) * 0.7) * LEUT_STEP;
-    const ph = hash(k * 5.3 + 4) * 6.28;
-    const spanne = 60 + hash(k * 7.1) * 70;
-    const wx = heim + Math.sin(t * 0.32 + ph) * spanne;
-    const hin = Math.cos(t * 0.32 + ph) > 0 ? 1 : -1;    // Blickrichtung
-    if (Math.abs(slopeAt(wx)) > 0.4) continue;           // nicht am Steilhang
-    if (poolAt(wx) || GEYSERS.some(g => Math.abs(g.x - wx) < 90)) continue;
+    const p = leutePlatz(k);
+    if (!p) continue;
+    const wx = p.heim + Math.sin(t * 0.32 + p.ph) * p.weite;
+    const hin = Math.cos(t * 0.32 + p.ph) > 0 ? 1 : -1;  // Blickrichtung
     const wy = terrainY(wx) - jumpRise(wx, true);
-    const eis = iceAt(wy), lava = lavaAt(wy), raum = spaceAt(wy);
-    const schnee = smooth((wy - CFG.SNOWLINE + 500) / 900) * (1 - eis - lava - raum);
-    const art = raum > 0.4 ? "alien" : lava > 0.4 ? "vulkan"
-              : (eis > 0.3 || schnee > 0.35) ? "wander" : "dorf";
     const s = SCALE * 1.35;
     if (schattenLauf) { schattenBand(wx, 7 * s / SCALE, 44 * s / SCALE, 0.26); continue; }
     ctx.save();
     ctx.translate(sx(wx), sy(wy));
     ctx.scale(hin, 1);                                   // spiegeln je Richtung
-    figur(ctx, art, s, t, ph, 1);
+    figur(ctx, p.art, s, t, p.ph, Math.max(0.22, Math.min(1, p.weite / 45)));
     ctx.restore();
   }
 }
@@ -2942,6 +3007,65 @@ function drawPfad() {
     ctx.stroke();
   }
   ctx.restore();
+}
+
+/* Kammweg und Wanderer auf den Hintergrundketten. Beide laufen mit derselben
+   Parallaxe wie Wald und Häuser der jeweiligen Kette, sitzen also fest auf
+   ihrem Berg statt mit der Kamera zu schwimmen. */
+function kammSteigung(x, amp, base) {
+  return (ridgeY(x + 8, amp, base) - ridgeY(x - 8, amp, base)) / 16;
+}
+
+function drawKammPfad(alt, par, amp, base, o) {
+  const wx0 = cam.x * par + (-40 - W * CAMX) / SCALE;
+  const wx1 = cam.x * par + (W + 40 - W * CAMX) / SCALE;
+  ctx.save();
+  ctx.setLineDash([10 * SCALE, 7 * SCALE]);
+  ctx.lineWidth = 2.4 * SCALE;
+  ctx.lineCap = "round";
+  ctx.strokeStyle = rgba(lerp3(o.weg, [16, 20, 44], alt), 0.85);
+  ctx.beginPath();
+  let auf = false;
+  // knapp unter dem Kamm, sonst verschwindet der Weg in der Silhouettenkante
+  for (let wx = wx0; wx <= wx1; wx += 15) {
+    const py = H * CAMY - (ridgeY(wx, amp, base) - cam.y * par) * SCALE + 4 * SCALE;
+    if (py > H + 30 || Math.abs(kammSteigung(wx, amp, base)) > 0.42) { auf = false; continue; }
+    const px = W * CAMX + (wx - cam.x * par) * SCALE;
+    auf ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    auf = true;
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawKammLeute(alt, par, amp, base, o) {
+  const wx0 = cam.x * par + (-60 - W * CAMX) / SCALE;
+  const wx1 = cam.x * par + (W + 60 - W * CAMX) / SCALE;
+  const t = performance.now() / 1000;
+  // je höher die Kamera, desto tiefer sinken die Ketten ins Dunkel – die Leute
+  // gehen den Weg mit, sind aber immer etwas stärker eingetrübt als der Wald
+  const misch = { ziel: [16, 20, 44], f: Math.min(0.9, 0.34 + alt * 0.56) };
+  for (let k = Math.floor(wx0 / o.lstep); k <= Math.ceil(wx1 / o.lstep); k++) {
+    if (hash(k * 8.13 + o.seed) > o.ldens) continue;
+    const heim = (k + hash(k * 6.1 + o.seed) * 0.7) * o.lstep;
+    let weite = 80 + hash(k * 9.7 + o.seed) * 110;
+    // dieselbe Regel wie unten am Gelände: erst kürzen, dann ganz verzichten
+    while (weite > 25 && (Math.abs(kammSteigung(heim - weite, amp, base)) > 0.38 ||
+                          Math.abs(kammSteigung(heim + weite, amp, base)) > 0.38))
+      weite *= 0.6;
+    if (weite <= 25 || Math.abs(kammSteigung(heim, amp, base)) > 0.38) continue;
+    const ph = hash(k * 4.4 + o.seed) * 6.28;
+    const wx = heim + Math.sin(t * 0.26 + ph) * weite;
+    const py = H * CAMY - (ridgeY(wx, amp, base) - cam.y * par) * SCALE;
+    if (py > H + 30 || py < -50) continue;
+    const px = W * CAMX + (wx - cam.x * par) * SCALE;
+    ctx.save();
+    ctx.translate(px, py + 2 * SCALE);
+    ctx.scale(Math.cos(t * 0.26 + ph) > 0 ? 1 : -1, 1);
+    figur(ctx, alt > 0.3 ? "wander" : "dorf", SCALE * o.lsz, t, ph,
+          Math.max(0.3, Math.min(1, weite / 60)), misch);
+    ctx.restore();
+  }
 }
 
 function bewuchs(schattenLauf) {
@@ -3923,13 +4047,18 @@ function draw() {
   drawProps(alt, 0.22, 420, 300,
             { step: 78, dens: 0.5, sz: 0.62, seed: 11.3,
               baum: [96, 124, 158], wand: [150, 160, 178], dach: [118, 112, 122] });
+  // ganz kleine Gestalten auf dem fernen Kamm, ohne Weg – der wäre dort nur Grieß
+  drawKammLeute(alt, 0.22, 420, 300, { lstep: 240, ldens: 0.7, lsz: 0.44, seed: 11.3 });
   // Dunst liegt zwischen den Ketten, nicht über beiden: sonst verliert auch der
   // Wald der vorderen Kette seinen Kontrast und wird zu grauem Brei.
   drawHaze(alt);
   drawRidge(0.45, 300, 120, mix([92, 122, 158], [22, 28, 58], alt));
+  // Weg zuerst: Wald und Häuser sollen davor stehen, nicht darunter
+  drawKammPfad(alt, 0.45, 300, 120, { weg: [154, 176, 202] });
   drawProps(alt, 0.45, 300, 120,
             { step: 96, dens: 0.62, sz: 1, hsz: 1.9, seed: 4.7, laub: true,
               baum: [58, 86, 114], wand: [128, 134, 142], dach: [92, 76, 78] });
+  drawKammLeute(alt, 0.45, 300, 120, { lstep: 200, ldens: 0.7, lsz: 0.78, seed: 4.7 });
   drawKirche(0.45, 300, 120, alt);
   drawVoegel();           // fliegen vor den Ketten, sonst verschluckt sie der Berg
   drawTerrain();

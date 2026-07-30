@@ -1512,7 +1512,7 @@ const WKIND = {
 };
 const WEA = {
   kind: "klar", left: 0, p: 0, wet: 0, next: 0, gust: 1, spin: 0,
-  boltIn: 0, warnX: 0, warnLeft: 0, flash: 0, bolt: null, tx: 0,
+  boltIn: 0, warnX: 0, warnLeft: 0, warnGes: 0, flash: 0, bolt: null, tx: 0,
 };
 const rnd = (a, b) => a + Math.random() * (b - a);
 const bikeX = () => (rear.x + front.x) / 2;
@@ -1612,6 +1612,11 @@ function blitzEin() {
 const GEF = { adler: null, adlerNext: 0, ufo: null, ufoNext: 0,
               komet: null, kometNext: 0 };
 
+/* Vorwarnzeit einer Gefahr. Annas Falkenauge streckt sie – und weil die
+   Anzeigen ihren Fortschritt aus derselben Zahl rechnen, muss sie überall
+   durch diese Funktion laufen, sonst läuft der Zielkreis dem Einschlag davon. */
+const warnZeit = t => t * MOD.warn;
+
 function gefReset() {
   GEF.adler = null; GEF.ufo = null; GEF.komet = null;
   GEF.adlerNext = rnd(CFG.ADLER_EVERY[0], CFG.ADLER_EVERY[1]);
@@ -1653,7 +1658,7 @@ function updateGefahren(dt) {
   /* ---- Adler: kreist kurz, stößt einmal zu und geht dabei drauf ---- */
   const a = GEF.adler;
   if (a === null) {
-    if (G_REGEL.adler && by > CFG.ADLER_VON && raum < 0.4) {
+    if (G_REGEL.adler && MOD.ult !== "vogelscheuche" && by > CFG.ADLER_VON && raum < 0.4) {
       GEF.adlerNext -= dt;
       if (GEF.adlerNext <= 0) { starteAdler(); GEF.adlerNext = rnd(CFG.ADLER_EVERY[0], CFG.ADLER_EVERY[1]); }
     }
@@ -1663,7 +1668,7 @@ function updateGefahren(dt) {
       // hält sich vor dem Fahrer und wippt, damit man ihn kommen sieht
       a.x += ((bx + 430) - a.x) * Math.min(1, dt * 2.2);
       a.y += ((by + 380) - a.y) * Math.min(1, dt * 2.2) + Math.sin(a.t * 6 + a.ph) * 26 * dt;
-      if (a.t >= CFG.ADLER_WARN) {
+      if (a.t >= warnZeit(CFG.ADLER_WARN)) {
         const zx = bx + (rear.x - rear.px) * 60 * CFG.ADLER_LEAD * 0.5, zy = by;
         const d = Math.hypot(zx - a.x, zy - a.y) || 1;
         a.vx = (zx - a.x) / d * CFG.ADLER_SPEED;
@@ -1691,7 +1696,7 @@ function updateGefahren(dt) {
     }
   } else {
     u.t += dt;
-    if (u.phase === "warn" && u.t >= CFG.UFO_WARN) {
+    if (u.phase === "warn" && u.t >= warnZeit(CFG.UFO_WARN)) {
       u.phase = "fang"; u.t = 0;
       if (Math.abs(bx - u.x) < CFG.UFO_HIT)
         getroffen("👽 Entführt!", "👽 Fast entführt! Schutzengel weg");
@@ -1707,7 +1712,7 @@ function updateGefahren(dt) {
     }
   } else {
     k.t += dt;
-    if (k.phase === "warn" && k.t >= CFG.KOMET_WARN) {
+    if (k.phase === "warn" && k.t >= warnZeit(CFG.KOMET_WARN)) {
       k.phase = "einschlag"; k.t = 0;
       if (Math.abs(bx - k.x) < CFG.KOMET_HIT && by < k.y + 260)
         getroffen("☄️ Vom Kometen getroffen!", "☄️ Komet! Schutzengel weg");
@@ -1760,9 +1765,12 @@ function updateWeather(dt) {
         // Sekunden wäre. Ohne das Vorhalten trifft er einen Fahrenden nie,
         // mit Vorhalten weicht man durch Bremsen oder Gas aus – das ist der Reiz.
         const vx = (rear.x - rear.px) * 120;
-        WEA.warnX = bikeX() + vx * CFG.WEA_BOLT_WARN * CFG.WEA_BOLT_LEAD
+        const vor = warnZeit(CFG.WEA_BOLT_WARN);
+        WEA.warnX = bikeX() + vx * vor * CFG.WEA_BOLT_LEAD
                   + rnd(-CFG.WEA_BOLT_SPREAD, CFG.WEA_BOLT_SPREAD);
-        WEA.warnLeft = CFG.WEA_BOLT_WARN;
+        // gemerkt, damit die Anzeige mit derselben Zeit rechnet wie der Einschlag
+        WEA.warnGes = vor;
+        WEA.warnLeft = vor;
         WEA.boltIn = rnd(CFG.WEA_BOLT_EVERY[0], CFG.WEA_BOLT_EVERY[1]);
       }
     }
@@ -2137,6 +2145,15 @@ const CHARS = [
             text: v => up(v) + " Punkte" },
     ult: { key: "schutzengel", icon: "🛡", title: "Schutzengel",
            text: "Übersteht einen Sturz pro Runde und fährt weiter." } },
+
+  /* Anna kommt ans Ende der Liste: Level und Freischaltungen liegen als Feld
+     nach Index im Speicher, ein Einschieben würde alte Spielstände verschieben. */
+  { name: "Anna", file: "Anna.jpeg",
+    buff: { icon: "👁", title: "Falkenauge", stat: "warn",
+            lv: [1.15, 1.30, 1.45, 1.60, 1.75],
+            text: v => up(v) + " Vorwarnzeit bei Gefahren" },
+    ult: { key: "vogelscheuche", icon: "🦅", title: "Vogelscheuche",
+           text: "Adler greifen sie nicht mehr an." } },
 ];
 
 const UNLOCK_COST = 10;
@@ -2174,9 +2191,10 @@ function saveProgress() {
 
 // Aktive Boni der gewählten Figur (1 = neutral), wird in reset() gesetzt.
 const MOD = { acc: 1, snowGrip: 1, fuel: 1, torqueAir: 1, flip: 1, maxSpd: 1, score: 1,
-              lives: 0, ult: "" };
+              warn: 1, lives: 0, ult: "" };
 function applyBuffs() {
   MOD.acc = MOD.snowGrip = MOD.fuel = MOD.torqueAir = MOD.flip = MOD.maxSpd = MOD.score = 1;
+  MOD.warn = 1;
   MOD.lives = 0; MOD.ult = "";
   const c = CHARS[charIdx];
   if (!c) return;
@@ -3401,7 +3419,7 @@ function drawGefahren() {
     // Die Untertasse hängt hoch über dem Boden und läge sonst über dem Bildrand.
     // Sie wird deshalb am oberen Rand gehalten – man muss sehen, wer einen holt.
     const px = sx(u.x), oben = Math.max(24 * SCALE, sy(gy + 900)), unten2 = sy(gy);
-    const auf = u.phase === "warn" ? smooth(u.t / CFG.UFO_WARN) : 1;
+    const auf = u.phase === "warn" ? smooth(u.t / warnZeit(CFG.UFO_WARN)) : 1;
     const b = u.phase === "fang" ? Math.max(0, 1 - u.t / 0.75) : auf;
     const br = CFG.UFO_HIT * SCALE * (0.35 + auf * 0.65);
     const g = ctx.createLinearGradient(px, oben, px, unten2);
@@ -3435,7 +3453,7 @@ function drawGefahren() {
   if (k) {
     const px = sx(k.x), py = sy(k.y);
     if (k.phase === "warn") {
-      const f = k.t / CFG.KOMET_WARN;
+      const f = k.t / warnZeit(CFG.KOMET_WARN);
       const r = CFG.KOMET_HIT * SCALE;
       ctx.strokeStyle = rgba([255, 150, 90], 0.35 + 0.45 * Math.abs(Math.sin(k.t * 9)));
       ctx.lineWidth = 2.6 * SCALE;
@@ -5055,7 +5073,7 @@ function drawBoltWarn() {
   const wx = WEA.warnX;
   const x = Math.max(26, Math.min(W - 26, sx(wx))), y = sy(groundUnder(wx, 1e9));
   const off = Math.abs(sx(wx) - x) > 1;
-  const t = 1 - WEA.warnLeft / CFG.WEA_BOLT_WARN;
+  const t = 1 - WEA.warnLeft / (WEA.warnGes || CFG.WEA_BOLT_WARN);
   const puls = 0.5 + 0.5 * Math.sin(WEA.warnLeft * 30);
   ctx.save();
   ctx.textAlign = "center";

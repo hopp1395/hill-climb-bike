@@ -5461,6 +5461,53 @@ function drawWasser() {
   // Wasseroberfläche mit Lichtstrahlen – nur zu sehen, solange sie im Bild ist
   const yO = sy(0);
   if (yO > -300) {
+    /* Über der Oberfläche liegt Himmel, kein Wasser. Am Start sieht man
+       dadurch Strand, Horizont und Wolken – und dass man gleich hineinfährt.
+       Sobald man abgetaucht ist, wandert das alles aus dem Bild. */
+    if (yO > 0) {
+      const hi = ctx.createLinearGradient(0, Math.max(0, yO - H * 0.9), 0, yO);
+      hi.addColorStop(0, "#4d90d8");
+      hi.addColorStop(0.65, "#8fc4ea");
+      hi.addColorStop(1, "#cfe6f4");                 // dunstig am Horizont
+      ctx.fillStyle = hi;
+      ctx.fillRect(0, 0, W, yO);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, 0, W, yO); ctx.clip();
+      // Sonne oben rechts, wie im Bergmodus
+      const sxx = W * 0.82, syy = yO - H * 0.62;
+      const sg = ctx.createRadialGradient(sxx, syy, 0, sxx, syy, 160 * SCALE);
+      sg.addColorStop(0, "rgba(255,248,214,.85)");
+      sg.addColorStop(0.25, "rgba(255,240,190,.28)");
+      sg.addColorStop(1, "rgba(255,236,180,0)");
+      ctx.fillStyle = sg;
+      ctx.beginPath(); ctx.arc(sxx, syy, 160 * SCALE, 0, 7); ctx.fill();
+      ctx.fillStyle = "rgba(255,252,232,.95)";
+      ctx.beginPath(); ctx.arc(sxx, syy, 20 * SCALE, 0, 7); ctx.fill();
+      // ferne Küste am Horizont, mit wenig Parallaxe
+      ctx.fillStyle = "rgba(104,134,156,.72)";
+      ctx.beginPath();
+      ctx.moveTo(-40, yO);
+      for (let x = -40; x <= W + 40; x += 16) {
+        const wx = x / SCALE + cam.x * 0.12;
+        ctx.lineTo(x, yO - (48 + Math.sin(wx * 0.0016) * 26
+                               + (vnoise(wx * 0.0009) - 0.5) * 40) * SCALE);
+      }
+      ctx.lineTo(W + 40, yO); ctx.closePath(); ctx.fill();
+      // ein paar Wolken
+      ctx.fillStyle = "rgba(255,255,255,.8)";
+      for (let i = 0; i < 5; i++) {
+        const wx = (i * 1900 + hash(i * 3.1) * 900);
+        const px2 = W * CAMX + (wx - cam.x * 0.09) % 5200 * SCALE - 900 * SCALE;
+        const py2 = yO - (H * 0.30 + hash(i * 5.7) * H * 0.3);
+        const s2 = (0.7 + hash(i * 2.3) * 0.8) * SCALE;
+        ctx.beginPath();
+        ctx.arc(px2, py2, 26 * s2, 0, 7);
+        ctx.arc(px2 + 26 * s2, py2 + 5 * s2, 19 * s2, 0, 7);
+        ctx.arc(px2 - 24 * s2, py2 + 6 * s2, 16 * s2, 0, 7);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
     ctx.save();
     ctx.beginPath(); ctx.rect(0, -200, W, Math.min(H + 200, yO + 200)); ctx.clip();
     const hell = ctx.createLinearGradient(0, yO - 40, 0, yO + 420 * SCALE);
@@ -5541,12 +5588,21 @@ function drawFische(liste, par, groesse) {
 
 function drawMeer() {
   drawWasser();
+  /* Blasen und Fische nur unterhalb der Oberfläche – am Start ist der obere
+     Bildteil Himmel, dort haben sie nichts zu suchen. */
+  ctx.save();
+  const yO = sy(0);
+  if (yO > 0) { ctx.beginPath(); ctx.rect(0, yO, W, H - yO); ctx.clip(); }
   drawBlasen();           // in der Wassersäule, also hinter der Fahrbahn
   drawFische(FISCHE, 0.55, 1);        // ferne Schwärme
+  ctx.restore();
   drawTerrain();          // Bewuchs wird hier von selbst zu Seegras: die
                           // Gebietsanteile sind unter Wasser alle null
   drawCans();
+  ctx.save();
+  if (yO > 0) { ctx.beginPath(); ctx.rect(0, yO, W, H - yO); ctx.clip(); }
   drawFische(FISCHE_NAH, 0.92, 2.1);  // große Einzelfische dicht an der Kamera
+  ctx.restore();
   // Beim Finale wird das Bike zusammengedrückt, nicht nur ausgeblendet
   const q = sternAnteil();
   if (q > 0.004) {

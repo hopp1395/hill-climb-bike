@@ -1,8 +1,7 @@
 # Hill Climb Bike
 
-Ein Browser-Spiel im Stil von Hill Climb Racing, mit Motorrad — komplett in **einer einzigen
-HTML-Datei**, ohne Build-Tools, ohne Framework, ohne externe Requests. `index.html` doppelklicken
-und losfahren.
+Ein Browser-Spiel im Stil von Hill Climb Racing, mit Motorrad — **ohne Build-Tools, ohne
+Framework, ohne externe Requests**. `index.html` doppelklicken und losfahren.
 
 Punkte gibt es für erklommene Höhe, und je höher du kommst, desto mehr ist jeder Meter wert.
 
@@ -70,6 +69,43 @@ Weltall. `+` schließt es wieder.
 Canvas 2D, `requestAnimationFrame`-Loop, deterministisches Terrain aus einer vorberechneten
 Höhenfunktion (`TFIELD`) — kein Zufall zur Laufzeit, jeder Durchlauf hat dieselbe Strecke.
 Sämtliche Grafik ist im Code gezeichnet; einzige Assets sind die Fahrer-Porträts in `charaktere/`.
+
+## Aufbau
+
+```
+index.html      nur das Markup und die Ladereihenfolge
+css/stil.css    das gesamte Aussehen der Oberfläche
+js/
+  config.js     alle Werte, an denen sich das Fahrgefühl schrauben lässt
+  modi.js       Schwierigkeitsgrade, Sondermodi, Kategorien der Startauswahl
+  canvas.js     Auflösung und Kamera, Welt- zu Bildschirmkoordinaten
+  terrain.js    Höhenfeld, Hindernisse, Schluchten, Rampen, Finale
+  physik.js     drei Verlet-Partikel als starres Dreieck
+  zustand.js    Zustand einer Runde, Gebietsgrenzen, Kanister, Geisteraufnahme
+  wetter.js     Wetterlagen und ihre Kräfte
+  gefahren.js   Adler, Entführer, Komet
+  tricks.js     Wheelie und Stoppie
+  spiel.js      Start, Tod, Mitflug und der Takt von update()
+  fahrer.js     Fahrer, Level, Fähigkeiten
+  bild/         alles Gezeichnete, von basis.js bis draw.js
+  hud.js        Anzeigen, Meldungen, Overlay
+  input.js      Zeiger, Bedienfelder, Vollbild
+  testmodus.js  das Panel auf Taste +
+  tasten.js     Tastatursteuerung
+  menue.js      Startauswahl und das Hochfahren beim Laden
+  main.js       die Schleife
+```
+
+Es sind **klassische Skripte, keine ES-Module** — deshalb läuft das Spiel weiterhin per
+Doppelklick von der Platte, wo Module an der CORS-Sperre scheitern würden. Der Preis dafür: alle
+Dateien teilen sich einen Namensraum, und **die Reihenfolge in `index.html` ist die
+Abhängigkeit**. Eine Datei darf alles benutzen, was weiter oben eingehängt ist — zur Laufzeit,
+nicht schon beim Laden. Neue Datei also an der Stelle einhängen, an der ihre Voraussetzungen
+schon stehen, und in `index.html` eintragen.
+
+Innerhalb von `js/bild/` gilt zusätzlich: die Reihenfolge der Dateien ist ungefähr die Reihenfolge
+im Bild, von hinten nach vorn. Was tatsächlich wann gezeichnet wird, steht gesammelt in
+`js/bild/draw.js`.
 
 ## Hinweis zu den Bildern
 

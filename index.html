@@ -58,6 +58,16 @@
     text-shadow:0 3px 12px rgba(0,0,0,.7);transition:opacity .2s,transform .2s}
   #toast.show{opacity:1;transform:translate(-50%,0)}
 
+  /* Laufende Nummer: zählt sichtbar hoch, solange Wheelie oder Stoppie steht,
+     und friert danach kurz ein. Sitzt unter dem Toast, damit sich beide nicht
+     überdecken. */
+  #trick{position:fixed;left:50%;top:30%;transform:translate(-50%,0) scale(1);
+    pointer-events:none;display:none;font-size:23px;font-weight:800;color:#9fe8ff;
+    font-variant-numeric:tabular-nums;text-shadow:0 3px 12px rgba(0,0,0,.7);
+    transition:transform .12s,color .12s}
+  #trick.fertig{color:#ffe08a;transform:translate(-50%,-8px) scale(1.18)}
+  #trick.voll{color:#ffb4a2}
+
   /* ---------- Steuerung ---------- */
   #pads{position:fixed;left:0;right:0;bottom:var(--versteckt);height:58%;display:flex}
   #pads.hidden{pointer-events:none;opacity:0}
@@ -347,6 +357,7 @@
 </div>
 
 <div id="toast"></div>
+<div id="trick"></div>
 
 <div id="pads" class="hidden">
   <div class="pad" id="padL"><div class="knob"><span>◀</span>Bremse</div></div>
@@ -382,7 +393,8 @@
     <div id="buff"></div>
     <div class="tips">
       <b>Rechts</b> Gas · <b>Links</b> Bremse · <b>Leertaste</b> Boost (doppelter Verbrauch)<br>
-      In der Luft hebt Gas die Nase, Bremse drückt sie runter.<br>
+      In der Luft hebt Gas die Nase, Bremse drückt sie runter – hältst du das
+      nach der Landung, gibt es Punkte für 🏍 Wheelie und 🛞 Stoppie.<br>
       Steile Hänge brauchen <b>Anlauf</b> · je 100 Punkte gibt es einen 🪙<br>
       Wetter zieht auf: 🌧️ rutschig · 🌬️ Wind · ⛈️ Blitze · 🌪️ leicht · <b>+</b> Testmodus
     </div>
@@ -444,6 +456,32 @@ const CFG = {
   // Ab so vielen Umdrehungen zählt der erste Flip. Jeder weitere braucht dann
   // eine ganze Drehung mehr – 0,75 / 1,75 / 2,75 usw.
   FLIP_MIN: 0.75,
+  /* ---- Wheelie und Stoppie ----
+     Gemessen wird der Anstellwinkel GEGEN den Boden, nicht gegen den Horizont:
+     sonst zählte jede Steilwand von allein als Wheelie und jede Abfahrt als
+     Stoppie. Nach oben ist der Winkel begrenzt, sonst gilt ein beginnender
+     Überschlag als Trick. */
+  // 12°. Bei 17° zählte gar nichts mehr – das Drehmoment am Boden ist klein,
+  // die Nase kommt nach der Landung nur kurz hoch. Bei 10° dagegen sprang die
+  // Wertung auch bei ganz normaler Fahrt an.
+  TRICK_WINKEL: 0.21,   // rad Mindestanstellung gegen den Hang
+  TRICK_MAXW: 1.30,     // darüber (75°) kippt man um, das ist kein Trick mehr
+  TRICK_TEMPO: 90,      // px/s Mindesttempo – im Stand aufbocken zählt nicht
+  /* Beide Nummern lassen sich nur nach einem Sprung anreißen, nicht aus dem
+     Stand – und sie halten sich kurz. Gemessen über 60 s Fahrt mit Absicht:
+     64 Fahrten auf dem Hinterrad, die längste 0,22 s, der Schnitt 0,07 s.
+     Die Punkte sind auf diese Größenordnung gerechnet: gezählt wird ab einer
+     Zehntelsekunde, und der Satz vervierfacht sich innerhalb von 0,75 s. */
+  TRICK_START: 0.12,    // s, ab denen die Nummer zählt und die Anzeige aufgeht
+  TRICK_GNADE: 0.10,    // s Aussetzer (Bodenwelle), die eine Nummer übersteht
+  // Punkte pro Sekunde am Anfang – hoch, weil es um Zehntelsekunden geht.
+  // Der Stoppie steht höher: er endet schneller im Überschlag.
+  TRICK_SATZ_W: 45,
+  TRICK_SATZ_S: 58,
+  TRICK_RAMPE: 0.25,    // s, nach denen der Satz doppelt so hoch liegt
+  TRICK_MAXSATZ: 4,     // Deckel für den Satz, erreicht nach 0,75 s
+  TRICK_CAP: 220,       // Deckel je Nummer, damit die Ebene kein Punktefeld wird
+  TRICK_HALT: 0.9,      // s, die die fertige Zahl noch stehen bleibt
   PPM: 26,             // Pixel pro Meter
   // Harter Steigungsdeckel: kein Hang wird steiler als das hier (tan).
   // 0.97 = 44,1°. Klettergrenze aus dem Stand: 55,6° auf Fels, 45,2° im
@@ -1556,6 +1594,11 @@ const G = {
   boost: 100, boosting: false, boostIdle: 0,
   reason: "", best: 0,
   airTime: 0, spinAcc: 0, touch: 0, lastAng: 0,
+  // laufende Nummer: art = null | "wheelie" | "stoppie", t = Dauer,
+  // punkte = bisher angesammelt, aus = wie lange die Haltung gerade weg ist.
+  // halt/wert/hArt halten die fertige Zahl noch kurz im Bild – eine Nummer
+  // dauert oft nur zwei Zehntel, sonst wäre sie nicht zu lesen.
+  trick: { art: null, t: 0, punkte: 0, aus: 0, halt: 0, wert: 0, hArt: null },
   time: 0, zone: 0,           // wie viele Gebietsgrenzen in diesem Lauf schon überfahren
   weltall: null,              // s seit dem Absprung ins All (null = noch am Berg)
   abspann: null,              // s seit dem Beginn des Rückblicks (null = läuft nicht)
@@ -1924,7 +1967,7 @@ function reset() {
   // Berg und Zwischenbild des Abspanns gehören zur alten Welt – die ist weg
   PROFIL = null; ABKARTE = null;
   G.boost = 100; G.boosting = false; G.boostIdle = 0;
-  G.airTime = 0; G.spinAcc = 0; G.touch = 0;
+  G.airTime = 0; G.spinAcc = 0; G.touch = 0; trickAus(); G.trick.halt = 0;
   G.lastAng = Math.atan2(front.y - rear.y, front.x - rear.x);
   cans.clear();
   weatherReset();
@@ -1971,7 +2014,73 @@ function safeX(x) {
   return x;
 }
 
+/* =========================================================================
+   WHEELIE UND STOPPIE
+   Zwei kurze Nummern: auf dem Hinterrad fahren (Nase hoch) oder auf dem
+   Vorderrad (Nase runter). Anreißen lassen sie sich nur nach einem Sprung,
+   und gehalten werden sie meist nur ein paar Zehntel – deshalb steigt der
+   Punktesatz mit der Dauer an, statt konstant zu laufen: jedes weitere Zehntel
+   ist mehr wert als das davor. Die Anzeige läuft dabei sichtbar mit;
+   gutgeschrieben wird, wenn die Nummer vorbei ist.
+   ========================================================================= */
+function trickArt() {
+  if (G.weltall !== null || G.heli) return null;
+  // Genau ein Rad am Boden – in der Luft ist es ein Flip, mit beiden Rädern
+  // unten fährt man einfach.
+  if (rear.grounded === front.grounded) return null;
+  if (Math.abs((rear.x - rear.px) * 120) < CFG.TRICK_TEMPO) return null;
+  const rad = rear.grounded ? rear : front;
+  let rel = Math.atan2(front.y - rear.y, front.x - rear.x) - Math.atan(slopeAt(rad.x));
+  while (rel > Math.PI) rel -= Math.PI * 2;
+  while (rel < -Math.PI) rel += Math.PI * 2;
+  const w = Math.abs(rel);
+  if (w < CFG.TRICK_WINKEL || w > CFG.TRICK_MAXW) return null;
+  return rear.grounded ? (rel > 0 ? "wheelie" : null)
+                       : (rel < 0 ? "stoppie" : null);
+}
+
+function updateTrick(dt) {
+  const t = G.trick, art = trickArt();
+  if (t.halt > 0) t.halt -= dt;
+  if (art !== null && (t.art === null || t.art === art)) {
+    if (t.art === null) { t.art = art; t.t = 0; t.punkte = 0; }
+    t.aus = 0;
+    t.t += dt;
+    // Gezählt wird die ganze Nummer, auch der Anfang – die Schwelle entscheidet
+    // nur, ob sie überhaupt als Nummer durchgeht.
+    const satz = (t.art === "wheelie" ? CFG.TRICK_SATZ_W : CFG.TRICK_SATZ_S)
+               * Math.min(CFG.TRICK_MAXSATZ, 1 + t.t / CFG.TRICK_RAMPE);
+    t.punkte = Math.min(CFG.TRICK_CAP, t.punkte + satz * MOD.score * dt);
+  } else if (t.art !== null) {
+    // Eine Bodenwelle hebt das Rad kurz an, ohne dass die Nummer vorbei wäre.
+    // Punkte gibt es in dieser Pause keine, aber sie beendet auch nichts.
+    t.aus += dt;
+    if (t.aus >= CFG.TRICK_GNADE || (art !== null && art !== t.art)) trickEnde();
+  }
+}
+
+function trickEnde() {
+  const t = G.trick, p = Math.round(t.punkte);
+  // Eine Landung, die kurz auf einem Rad ausfedert, ist keine Nummer.
+  if (t.t >= CFG.TRICK_START && p > 0) {
+    G.score += p;
+    // Die Zahl bleibt stehen, statt in eine eigene Meldung zu wandern: sie
+    // steht schon im Bild und soll dort nur noch festfrieren.
+    t.hArt = t.art; t.wert = p; t.halt = CFG.TRICK_HALT;
+  }
+  trickAus();
+}
+
+// stilles Ende – für Respawn, Mitflug und Neustart, wo nichts gutzuschreiben ist
+function trickAus() {
+  const t = G.trick;
+  t.art = null; t.t = 0; t.punkte = 0; t.aus = 0;
+}
+
+const trickName = art => art === "wheelie" ? "🏍 Wheelie" : "🛞 Stoppie";
+
 function respawn() {
+  trickAus();
   const x = Math.max(60, safeX(rear.x - 40));
   rear.x = x; rear.y = terrainY(x) + CFG.WHEEL_R + 3;
   front.x = x + CFG.WHEELBASE; front.y = terrainY(x + CFG.WHEELBASE) + CFG.WHEEL_R + 3;
@@ -1987,6 +2096,9 @@ function gameOver(reason) {
   if (G.state !== "play") return;
   G.state = "over";
   G.reason = reason;
+  // Die stehengebliebene Trick-Zahl läuft nur im Spiel ab – sonst klebte sie
+  // über dem Abschlussbild.
+  trickAus(); G.trick.halt = 0;
   const sc = Math.floor(G.score);
   if (sc > G.best) {
     G.best = sc;
@@ -2028,7 +2140,7 @@ function heliFangen() {
     zx = bx2;
     G.heli = { t: 0, x0: bx, y0: by, hx: h.x, hy: h.y,
                zx, zy: terrainY(zx) + CFG.WHEEL_R + 6 };
-    G.airTime = 0; G.spinAcc = 0;          // der Mitflug ist kein Salto
+    G.airTime = 0; G.spinAcc = 0; trickAus();   // der Mitflug ist kein Salto
     toast("🚁 Mitflug! +" + CFG.HELI_GEWINN + " m");
     return;
   }
@@ -2161,6 +2273,8 @@ function update(dt) {
     }
   }
 
+  updateTrick(dt);
+
   // Sprit – Boost schluckt doppelt (und gibt auch ohne Gas Schub). Im
   // Weltraum-Finale läuft er nicht weiter, sonst reißt ein leerer Tank den
   // Abspann mittendrin ab.
@@ -2208,6 +2322,7 @@ function update(dt) {
      der Radhöhe als Spielraum. */
   } else if (fortschritt(my) >= CFG.GIPFEL - (istMeer() ? CFG.WHEEL_R * 3 : 0)) {
     G.weltall = 0;
+    trickAus();          // eine laufende Nummer geht im Finale unter
   }
 
   // Crash: Kopf berührt den Boden
@@ -5938,6 +6053,23 @@ function updateHUD() {
     ge.textContent = "👻 " + (d >= 0 ? "+" : "−") + Math.abs(Math.round(d)) + " m";
     ge.style.color = d >= 0 ? "#7ee0a1" : "#ffb4a2";
   }
+  /* Wheelie/Stoppie: die Zahl läuft mit, solange die Nummer steht, und bleibt
+     danach noch kurz stehen – bei zwei Zehntel Fahrzeit wäre sie sonst weg,
+     bevor man sie gelesen hat. */
+  const tr = G.trick, trEl = el("trick");
+  const laeuft = tr.art !== null && tr.t >= CFG.TRICK_START;
+  if (laeuft || tr.halt > 0) {
+    const art = laeuft ? tr.art : tr.hArt;
+    const wert = laeuft ? Math.floor(tr.punkte) : tr.wert;
+    // "block", nicht "": die Grundregel steht auf display:none, ein Leerstring
+    // würde genau dorthin zurückfallen.
+    trEl.style.display = "block";
+    trEl.textContent = trickName(art) + "  +" + wert;
+    trEl.classList.toggle("fertig", !laeuft);
+    trEl.classList.toggle("voll", laeuft && tr.punkte >= CFG.TRICK_CAP - 0.5);
+    trEl.style.opacity = laeuft ? 1 : Math.min(1, tr.halt / 0.35);
+  } else trEl.style.display = "none";
+
   fuelFill.style.width = G.fuel + "%";
   fuelFill.classList.toggle("low", G.fuel < 25);
   boostFill.style.width = G.boost + "%";
@@ -6151,7 +6283,7 @@ function tpTo(x) {
   front.px = front.x; front.py = front.y;
   body.px = body.x = 0; body.py = body.y = 0; seatBody();
   rear.grounded = front.grounded = false;
-  G.airTime = 0; G.spinAcc = 0; G.touch = 0;
+  G.airTime = 0; G.spinAcc = 0; G.touch = 0; trickAus();
   G.lastAng = Math.atan2(front.y - rear.y, front.x - rear.x);
   // kein geschenkter Punkteschub durch den Sprung
   if (fortschritt(y) > fortschritt(G.maxY)) G.maxY = y;

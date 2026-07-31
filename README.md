@@ -28,7 +28,10 @@ python -m http.server 8777
 | Neustart | `R` | Button im Overlay |
 
 In der Luft kippt Gas die Nase hoch und Bremse sie runter — der Anstellwinkel beim Aufsetzen
-entscheidet über Landung oder Sturz.
+entscheidet über Landung oder Sturz. Hältst du die Nase nach der Landung oben, fährst du einen
+**Wheelie**, hältst du sie unten, einen **Stoppie**. Beide geben Punkte, und zwar umso mehr, je
+länger sie stehen: der Satz vervierfacht sich innerhalb von 0,75 Sekunden. Die Zahl läuft während
+der Nummer sichtbar mit und bleibt danach kurz stehen.
 
 **Am Handy:** Gas, Bremse und Boost lassen sich gleichzeitig halten, und ein Finger darf von einem
 Feld aufs andere wandern. Der Knopf ⛶ oben schaltet ins Vollbild (und versucht dabei, aufs

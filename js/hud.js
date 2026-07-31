@@ -68,7 +68,7 @@ function showOverlay(isOver) {
   boostBox.classList.add("hidden");
   el("stats").classList.toggle("show", !!isOver);
   el("panel").classList.toggle("ende", !!isOver);   // steuert die knappen Handy-Layouts
-  document.querySelector(".tips").style.display = isOver ? "none" : "";   // nach dem Crash unnötig
+  el("panel").dataset.ansicht = "haupt";            // nie in einem Untermenü aufwachen
   if (isOver) {
     el("title").innerHTML = G.reason;
     el("sub").textContent = G.geschafft
@@ -90,6 +90,8 @@ function showOverlay(isOver) {
     el("btn").textContent = "Nochmal";
   } else {
     el("title").innerHTML = 'Hill Climb <em>Bike</em>';
+    el("sub").textContent = "Fahr so hoch du kannst – je höher, desto mehr ist jeder Meter wert.";
+    el("panel").classList.remove("geschafft");
     el("btn").textContent = "Losfahren";
   }
   renderCard();          // Coinstand und Upgrade-Knopf aktualisieren

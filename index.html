@@ -108,30 +108,63 @@
   </div>
 </div>
 
+<!-- Das Menü hat drei Ansichten, von denen immer genau eine sichtbar ist. Auf
+     der Hauptansicht steht nur, was man vor jedem Lauf wirklich braucht: Modus,
+     Fahrer, los. Alles Seltenere – Karten, Upgrades, Steuerung – liegt eine
+     Ebene tiefer, damit die Hauptansicht ohne Scrollen auf einen flachen
+     Handybildschirm passt. Umgeschaltet wird über data-ansicht am Panel. -->
 <div id="overlay">
-  <div id="panel">
-    <h1 id="title">Hill Climb <em>Bike</em></h1>
-    <div id="sub">Fahr so hoch du kannst – je höher, desto mehr ist jeder Meter wert.</div>
-    <div id="stats">
-      <div class="card"><div class="lbl" id="sHeightLbl">Höhe</div><div class="val" id="sHeight">0<small> m</small></div></div>
-      <div class="card"><div class="lbl">Punkte</div><div class="val" id="sScore">0</div></div>
-      <div class="card"><div class="lbl">Coins</div><div class="val" id="sCoins">0</div></div>
-      <div class="card"><div class="lbl">Rekord</div><div class="val" id="sBest">0</div></div>
+  <div id="panel" data-ansicht="haupt">
+
+    <div class="ansicht" data-fuer="haupt">
+      <h1 id="title">Hill Climb <em>Bike</em></h1>
+      <div id="sub">Fahr so hoch du kannst – je höher, desto mehr ist jeder Meter wert.</div>
+      <div id="stats">
+        <div class="card"><div class="lbl" id="sHeightLbl">Höhe</div><div class="val" id="sHeight">0<small> m</small></div></div>
+        <div class="card"><div class="lbl">Punkte</div><div class="val" id="sScore">0</div></div>
+        <div class="card"><div class="lbl">Coins</div><div class="val" id="sCoins">0</div></div>
+        <div class="card"><div class="lbl">Rekord</div><div class="val" id="sBest">0</div></div>
+      </div>
+      <div id="katWahl"></div>
+      <div id="gradWahl"></div>
+      <div id="gradText"></div>
+      <button id="fahrerZeile" class="zeile" data-auf="fahrer">
+        <span class="zPic pic" id="zPic"></span>
+        <span class="zText">
+          <b id="zName">–</b>
+          <span id="zBuff">–</span>
+        </span>
+        <span class="zMehr">🪙 <span id="zCoins">0</span> <span class="zPfeil">›</span></span>
+      </button>
+      <button id="btn">Losfahren</button>
+      <button class="klein" data-auf="hilfe">Steuerung &amp; Tipps</button>
     </div>
-    <div id="katWahl"></div>
-    <div id="gradWahl"></div>
-    <div id="gradText"></div>
-    <div id="charLbl">Fahrer <span id="coinBox">🪙 <span id="coinCount">0</span></span></div>
-    <div id="chars"></div>
-    <div id="buff"></div>
-    <div class="tips">
-      <b>Rechts</b> Gas · <b>Links</b> Bremse · <b>Leertaste</b> Boost (doppelter Verbrauch)<br>
-      In der Luft hebt Gas die Nase, Bremse drückt sie runter – hältst du das
-      nach der Landung, gibt es Punkte für 🏍 Wheelie und 🛞 Stoppie.<br>
-      Steile Hänge brauchen <b>Anlauf</b> · je 100 Punkte gibt es einen 🪙<br>
-      Wetter zieht auf: 🌧️ rutschig · 🌬️ Wind · ⛈️ Blitze · 🌪️ leicht · <b>+</b> Testmodus
+
+    <div class="ansicht" data-fuer="fahrer">
+      <div class="uKopf">
+        <button class="zurueck" data-auf="haupt">‹ Zurück</button>
+        <b>Fahrer</b>
+        <span id="coinBox">🪙 <span id="coinCount">0</span></span>
+      </div>
+      <div id="chars"></div>
+      <div id="buff"></div>
     </div>
-    <button id="btn">Losfahren</button>
+
+    <div class="ansicht" data-fuer="hilfe">
+      <div class="uKopf">
+        <button class="zurueck" data-auf="haupt">‹ Zurück</button>
+        <b>Steuerung &amp; Tipps</b>
+        <span></span>
+      </div>
+      <div class="tips">
+        <b>Rechts</b> Gas · <b>Links</b> Bremse · <b>Leertaste</b> Boost (doppelter Verbrauch)<br>
+        In der Luft hebt Gas die Nase, Bremse drückt sie runter – hältst du das
+        nach der Landung, gibt es Punkte für 🏍 Wheelie und 🛞 Stoppie.<br>
+        Steile Hänge brauchen <b>Anlauf</b> · je 100 Punkte gibt es einen 🪙<br>
+        Wetter zieht auf: 🌧️ rutschig · 🌬️ Wind · ⛈️ Blitze · 🌪️ leicht · <b>+</b> Testmodus
+      </div>
+    </div>
+
   </div>
 </div>
 

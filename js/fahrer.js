@@ -128,14 +128,21 @@ function faceCrop(img) {
   return { s, x: w / 2 - s / 2, y: cy - s / 2 };
 }
 
-function paintAvatar(c) {
-  if (!c.el || !c.ok) return;
-  const pic = c.el.querySelector(".pic");
+/* Schneidet das Gesicht in einen beliebigen runden Rahmen – die Kartenreihe im
+   Untermenü und die Fahrerzeile in der Hauptansicht sind verschieden groß. */
+function malAvatar(pic, c) {
+  if (!pic || !c.ok || !c.img) return;
   const cr = faceCrop(c.img), k = (pic.clientWidth || 50) / cr.s;
   pic.textContent = "";
   pic.style.backgroundImage = 'url("' + CHAR_DIR + encodeURIComponent(c.file) + '")';
   pic.style.backgroundSize = (c.img.naturalWidth * k) + "px " + (c.img.naturalHeight * k) + "px";
   pic.style.backgroundPosition = (-cr.x * k) + "px " + (-cr.y * k) + "px";
+}
+
+function paintAvatar(c) {
+  if (!c.el || !c.ok) return;
+  malAvatar(c.el.querySelector(".pic"), c);
+  if (c === CHARS[charIdx]) malAvatar(document.getElementById("zPic"), c);
 }
 
 function selectChar(i) {
@@ -162,7 +169,23 @@ function el2(tag, cls, txt) {
 }
 
 // Karte des gewählten Fahrers: Bonus, Level-Leiste, Upgrade, Max-Fähigkeit
+/* Die Hauptansicht zeigt vom Fahrer nur eine Zeile: Bild, Name, laufender Buff
+   und Coinstand. Wer mehr will, tippt sie an und landet im Untermenü. */
+function renderFahrerZeile() {
+  const nm = document.getElementById("zName");
+  if (!nm) return;
+  const c = CHARS[charIdx], b = c.buff, lv = levels[charIdx];
+  nm.textContent = c.name;
+  document.getElementById("zBuff").textContent =
+    b.icon + " " + b.title + " · Level " + lv + " / " + MAXLV;
+  document.getElementById("zCoins").textContent = coins;
+  const pic = document.getElementById("zPic");
+  if (pic && !c.ok) pic.textContent = c.name[0];      // Fallback ohne Bild
+  malAvatar(pic, c);
+}
+
 function renderCard() {
+  renderFahrerZeile();
   const box = document.getElementById("buff");
   if (!box) return;
   const i = viewIdx, c = CHARS[i], lv = levels[i], b = c.buff, frei = unlocked[i];

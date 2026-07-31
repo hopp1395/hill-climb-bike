@@ -38,8 +38,15 @@ Querformat zu drehen); im Hochformat weist ein Hinweis aufs Drehen hin, lässt s
 
 Die Spielfläche richtet sich nach `visualViewport`, nicht nach `innerHeight` — sie endet also
 genau über der Browserleiste statt dahinter, und die Knöpfe wandern mit, wenn die Leiste ein-
-oder ausfährt. Gescrollt wird nichts: `body` steht auf `position:fixed`, und im Querformat legt
-sich das Startmenü zweispaltig, damit es ohne Scrollen auf einen flachen Bildschirm passt.
+oder ausfährt. Gescrollt wird nichts: `body` steht auf `position:fixed`.
+
+## Das Menü
+
+Auf der Hauptansicht steht nur, was man vor jedem Lauf wirklich braucht: Kategorie und Modus,
+eine Zeile mit dem aktuellen Fahrer, der Startknopf. Alles Seltenere liegt eine Ebene tiefer —
+die Fahrerzeile führt zu Karten, Leveln und Upgrades, der kleine Knopf darunter zu Steuerung und
+Tipps. So passt die Hauptansicht ohne Scrollen auf jeden Bildschirm; nachgemessen bleibt sie
+zwischen 219 px (flaches Querformat) und 392 px, auch der Endbildschirm mit seiner Statistik.
 
 ## Was drin ist
 

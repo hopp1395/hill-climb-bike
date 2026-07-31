@@ -139,6 +139,13 @@
   #panel{max-width:460px;width:100%;text-align:center;background:rgba(12,20,40,.72);
     border:1px solid rgba(255,255,255,.14);border-radius:20px;padding:26px 24px 22px;
     box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  /* Drei Ansichten im selben Rahmen, sichtbar ist immer genau die, die am
+     Panel steht. Untermenüs sind kein Overlay über dem Menü, sondern ersetzen
+     seinen Inhalt – so bleibt der Rahmen ruhig und nichts stapelt sich. */
+  .ansicht{display:none}
+  #panel[data-ansicht="haupt"]  .ansicht[data-fuer="haupt"],
+  #panel[data-ansicht="fahrer"] .ansicht[data-fuer="fahrer"],
+  #panel[data-ansicht="hilfe"]  .ansicht[data-fuer="hilfe"]{display:block}
   #panel h1{font-size:30px;line-height:1.15;letter-spacing:-.01em;margin-bottom:6px}
   #panel h1 em{font-style:normal;color:#7ee0a1}
   /* Der Lauf endete am Gipfel statt im Dreck – das darf man sehen */
@@ -160,6 +167,36 @@
   .tips{text-align:left;font-size:13px;line-height:1.7;opacity:.8;background:rgba(0,0,0,.2);
     border-radius:12px;padding:12px 14px;margin-bottom:4px}
   .tips b{color:#ffd166}
+  /* Führt ins Untermenü: kleiner, ruhiger, nicht in Startknopf-Grün */
+  .klein{margin-top:9px;width:100%;padding:7px;border:1px solid rgba(255,255,255,.1);
+    border-radius:10px;cursor:pointer;font:inherit;font-size:12px;font-weight:600;
+    color:rgba(255,255,255,.72);background:rgba(255,255,255,.05)}
+  .klein:active{transform:translateY(1px)}
+
+  /* ---------- Fahrerzeile in der Hauptansicht ---------- */
+  /* Zeigt, wer fährt und was er kann, und ist zugleich der Weg ins Untermenü. */
+  .zeile{display:flex;align-items:center;gap:11px;width:100%;margin-bottom:11px;
+    padding:8px 12px 8px 8px;border-radius:14px;cursor:pointer;font:inherit;color:#fff;
+    text-align:left;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
+    transition:border-color .12s,background .12s}
+  .zeile:hover{border-color:rgba(255,255,255,.26)}
+  .zeile:active{transform:translateY(1px)}
+  .zPic{width:40px;height:40px;flex:0 0 auto;margin:0;font-size:16px}
+  .zText{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;line-height:1.25}
+  .zText b{font-size:14px;font-weight:800}
+  #zBuff{font-size:11px;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .zMehr{display:flex;align-items:center;gap:7px;white-space:nowrap;
+    font-size:12px;font-weight:700;opacity:.75}
+  .zPfeil{font-size:21px;line-height:1;opacity:.5}
+
+  /* ---------- Kopfzeile der Untermenüs ---------- */
+  .uKopf{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:13px}
+  .uKopf b{font-size:15px;font-weight:800}
+  .uKopf > span{font-size:12px;font-weight:700;min-width:66px;text-align:right}
+  .zurueck{padding:6px 11px;border-radius:9px;cursor:pointer;font:inherit;font-size:12px;
+    font-weight:700;color:#fff;background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.16);min-width:66px}
+  .zurueck:active{transform:translateY(1px)}
 
   /* niedrige Fenster: alles etwas kompakter, damit der Knopf sichtbar bleibt */
   @media (max-height:720px){
@@ -176,55 +213,67 @@
     #stats .val{font-size:18px}
   }
 
-  /* Handy im Querformat: rund 390 px hoch, aber breit. Einspaltig braucht das
-     Menü über 500 px und müsste gescrollt werden – also nebeneinander legen.
-     Links Fahrer und Fähigkeit, rechts Erklärung und Startknopf. */
-  @media (max-height:520px) and (min-width:640px){
+  /* Handy im Querformat: rund 390 px hoch, aber breit. Die Hauptansicht ist
+     kurz genug für eine Spalte – nur das Fahrer-Untermenü muss sich breit
+     machen, weil Kartenreihe und Fähigkeitskasten übereinander nicht passen. */
+  @media (max-height:520px){
     #overlay{padding:8px}
-    #panel{max-width:min(780px,96vw);display:grid;column-gap:18px;
-      grid-template-columns:1.06fr .94fr;padding:9px 15px 10px}
-    #panel h1{grid-area:1/1/2/3;font-size:20px;margin-bottom:1px}
-    #sub{grid-area:2/1/3/3;font-size:11.5px;line-height:1.4;margin-bottom:7px}
-    #katWahl{grid-area:3/1/4/2;margin-bottom:5px}
-    #gradWahl{grid-area:4/1/5/2;margin-bottom:6px}
-    #gradText{display:none}          /* die Knopf-Untertitel sagen es schon */
-    #charLbl{grid-area:5/1/6/2;margin-bottom:6px}
-    #chars{grid-area:6/1/7/2}
-    #buff{grid-area:7/1/8/2;margin-bottom:0}
-    /* Tipps (im Menü) und Statistik (nach dem Lauf) teilen sich dieselbe Zelle –
-       es ist ohnehin immer nur eins von beidem sichtbar. */
-    .tips{grid-area:3/2/7/3;margin:0;align-self:start}
-    #stats{grid-area:3/2/7/3;flex-wrap:wrap;margin:0;align-self:start}
-    #stats .card{flex:1 1 44%}
-    #btn{grid-area:7/2/8/3;align-self:end;margin-top:0}
+    #panel{padding:12px 16px 13px}
+    #panel h1{font-size:20px;margin-bottom:2px}
+    #sub{font-size:11.5px;line-height:1.4;margin-bottom:8px}
+    #gradText{font-size:10.5px;margin-bottom:8px}
     .kat{padding:4px 6px;font-size:11px}
+    #gradWahl .grad{padding:6px 6px}
+    #gradWahl .grad b{font-size:13px}
+    #gradWahl .grad span{font-size:10px}
+    .zeile{margin-bottom:9px;padding:6px 11px 6px 6px}
+    .zPic{width:34px;height:34px}
+    .klein{margin-top:7px;padding:6px;font-size:11.5px}
+    .uKopf{margin-bottom:9px}
+    #stats{margin:10px 0 11px}
+  }
+  @media (max-height:520px) and (min-width:560px){
+    #panel{max-width:min(720px,96vw)}
+    #panel[data-ansicht="fahrer"] .ansicht[data-fuer="fahrer"]{
+      display:grid;column-gap:16px;grid-template-columns:1fr 1fr;align-items:start}
+    .uKopf{grid-area:1/1/2/3}
+    #chars{grid-area:2/1/3/2;margin-bottom:0}
+    #buff{grid-area:2/2/3/3;margin-bottom:0}
     /* über die ID, sonst gewinnt die allgemeine .char-Regel weiter unten und
-       die sechs Fahrer brechen in eine zweite Zeile um */
-    #chars .char{width:44px}
-    #chars .char .pic{width:38px;height:38px}
+       die Fahrer brechen in eine weitere Zeile um */
+    #chars .char{width:46px}
+    #chars .char .pic{width:40px;height:40px}
     #chars .char .nm{font-size:9.5px}
-    #gradWahl .grad{padding:5px 6px}
-    #gradWahl .grad b{font-size:12.5px}
-    #gradWahl .grad span{font-size:9.5px}
   }
   /* Noch flacher (Querformat mit eingeblendeter Browserleiste): der Werbesatz
-     unter dem Titel fliegt raus. Nach dem Lauf bleibt er stehen, dort steht
-     dort nämlich, woran man gescheitert ist. */
-  @media (max-height:420px) and (min-width:640px){
+     unter dem Titel fliegt raus, ebenso die Modus-Erklärung – was der Modus tut,
+     steht schon als Untertitel auf seinem Knopf. Nach dem Lauf bleibt der Satz
+     stehen, aber gekürzt: dort steht, woran man gescheitert ist. */
+  @media (max-height:430px){
     #panel:not(.ende) #sub{display:none}
+    #panel.ende #sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+      overflow:hidden;margin-bottom:8px}
+    #gradText{display:none}
     #panel h1{font-size:18px}
+    #katWahl{margin-bottom:4px}
+    .kat{padding:3px 6px;font-size:10.5px}
+    #gradWahl{margin-bottom:5px}
+    #gradWahl .grad{padding:5px 6px}
     #buff{padding:7px 10px 8px}
     .tips{font-size:11px;line-height:1.5;padding:8px 10px}
-    #katWahl{margin-bottom:3px}
-    .kat{padding:3px 6px;font-size:10.5px}
-    #gradWahl{margin-bottom:4px}
-    #gradWahl .grad{padding:4px 6px}
-    #buff{padding:6px 9px 7px}
-    .tips{padding:7px 9px}
+    #btn{padding:10px;font-size:14px}
     /* der Endbildschirm zeigt zusätzlich die Statistik und war sonst zu hoch */
+    #stats{margin:8px 0 9px}
     #stats .card{padding:3px 7px}
     #stats .val{font-size:14px}
     #stats .lbl{font-size:9px}
+  }
+  /* Ganz flach: auch der Satz nach dem Lauf fällt weg. Woran es lag, steht als
+     Überschrift da, und die Zahlen darunter sagen den Rest. */
+  @media (max-height:360px){
+    #panel.ende #sub{display:none}
+    .klein{display:none}             /* die Tipps holt man sich hier nicht */
+    #panel h1{font-size:17px;margin-bottom:3px}
   }
 
   /* ---------- Kategorie und Modus ---------- */
@@ -244,9 +293,8 @@
   .grad.on span{opacity:.85}
   #gradText{font-size:11.5px;line-height:1.5;opacity:.62;margin-bottom:11px;min-height:1em}
 
-  /* ---------- Fahrerauswahl ---------- */
-  #charLbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;opacity:.6;margin-bottom:9px}
-  #chars{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:10px}
+  /* ---------- Fahrerauswahl (Untermenü) ---------- */
+  #chars{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:12px}
   #buff{font-size:12.5px;line-height:1.5;margin-bottom:15px;padding:10px 13px 11px;border-radius:12px;
     background:rgba(126,224,161,.09);border:1px solid rgba(126,224,161,.22);text-align:left}
   .bTop{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
@@ -263,7 +311,7 @@
     border-top:1px solid rgba(255,255,255,.12);opacity:.45}
   .bUlt.on{opacity:1}
   .bUlt b{color:#ffd166}
-  #coinBox{float:right;letter-spacing:0;text-transform:none;font-size:12px;opacity:1;font-weight:700}
+  #coinBox{white-space:nowrap}
   .char{width:58px;cursor:pointer;opacity:.5;transition:opacity .15s,transform .15s;position:relative}
   .char:hover{opacity:.8}
   .char.sel{opacity:1;transform:translateY(-2px)}

@@ -1,6 +1,17 @@
 "use strict";
 /* Startauswahl: Kategorie und Modus, und das Hochfahren beim Laden
    Teil von Hill Climb Bike – siehe index.html für die Ladereihenfolge. */
+/* Untermenüs: alles mit data-auf schaltet die Ansicht des Panels um. */
+function zeigeAnsicht(name) {
+  el("panel").dataset.ansicht = name;
+  el("overlay").scrollTop = 0;
+  // Die Gesichter werden auf die Breite ihres Rahmens zugeschnitten, und die
+  // steht erst fest, wenn die Karten sichtbar sind – vorher ist sie 0.
+  if (name === "fahrer") CHARS.forEach(paintAvatar);
+}
+for (const b of document.querySelectorAll("[data-auf]"))
+  b.addEventListener("click", () => zeigeAnsicht(b.dataset.auf));
+
 /* Zweistufige Auswahl: Kategorie oben, Modus darunter. Die Wahl gilt erst für
    den nächsten Lauf und wird gemerkt; Rekord und HUD stellen sich sofort um. */
 const KURZ = { einfach: "500 m · zahm", normal: "1000 m · alles",
